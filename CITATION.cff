@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+title: "Colony Counter: an explainable, human-in-the-loop tool for microbial colony counting on gridded and plain agar plates"
+message: "If you use this software, please cite it as below."
+type: software
+authors:
+  - given-names: Arnold
+    family-names: William
+repository-code: "https://github.com/williamarnold708/colony-counter"
+abstract: >-
+  An open-source tool for counting microbial colonies from plate photographs
+  under real laboratory conditions, developed to solve a quality-control need
+  in a brewery microbiology lab. It combines a trained object-detection model
+  with a classical computer-vision fallback (including grid-line inpainting for
+  printed counting plates) and a human-in-the-loop correction interface.
+  Corrections made while counting can be saved back into the training dataset,
+  so the model improves on the cases an analyst had to fix. A bundled labelling
+  tool and training pipeline let any lab build a detector from its own plates.
+keywords:
+  - colony counting
+  - microbiology
+  - quality control
+  - brewing
+  - object detection
+  - computer vision
+  - human-in-the-loop
+license: MIT
+version: "0.1.0"
+date-released: "2026-07-20"

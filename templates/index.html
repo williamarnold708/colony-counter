@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Colony Counter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#12161a; --panel:#1b2128; --panel-border:#2a323b; --text:#e7e4dd;
+    --text-dim:#8b939c; --agar:#c99a4e; --agar-dim:#7a6438; --phosphor:#7fe6a8;
+    --phosphor-dim:#2f4a3c; --danger:#d9714f;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:'Inter',sans-serif; min-height:100vh; }
+  header { padding:24px 32px; max-width:1080px; margin:0 auto; display:flex; align-items:baseline; justify-content:space-between; }
+  .brand { font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:18px; }
+  .brand span { color:var(--agar); }
+  .rig-label { font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--text-dim); letter-spacing:0.08em; text-transform:uppercase; }
+  .rig-label.model { color:var(--phosphor); }
+  main { max-width:1080px; margin:0 auto; padding:8px 32px 80px; }
+  h1 { font-family:'Space Grotesk',sans-serif; font-size:30px; font-weight:600; margin:0 0 8px; letter-spacing:-0.01em; }
+  .sub { color:var(--text-dim); font-size:15px; margin:0 0 32px; max-width:560px; line-height:1.5; }
+  .dish { width:300px; height:300px; border-radius:50%; border:2px dashed var(--agar-dim); background:radial-gradient(circle at 50% 45%, #232b32, #171c21 75%); display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; transition:border-color 0.2s, transform 0.15s; text-align:center; margin:0 auto; }
+  .dish:hover { border-color:var(--agar); }
+  .dish.drag-over { border-color:var(--phosphor); transform:scale(1.01); }
+  .dish-icon { width:40px; height:40px; border:1.5px solid var(--text-dim); border-radius:50%; margin-bottom:14px; display:flex; align-items:center; justify-content:center; font-size:22px; color:var(--text-dim); font-weight:300; }
+  .dish-text { font-size:13px; color:var(--text-dim); padding:0 40px; line-height:1.5; }
+  .dish-text strong { color:var(--text); font-weight:500; }
+  input[type="file"] { display:none; }
+  #workView { display:none; }
+  .bench { display:grid; grid-template-columns:1fr 300px; gap:28px; align-items:start; }
+  @media (max-width:860px) { .bench { grid-template-columns:1fr; } }
+  .stage-wrap { position:relative; background:var(--panel); border:1px solid var(--panel-border); border-radius:12px; overflow:hidden; line-height:0; }
+  #stage { position:relative; display:inline-block; width:100%; cursor:crosshair; }
+  #plateImg { width:100%; display:block; user-select:none; -webkit-user-drag:none; }
+  .marker { position:absolute; border:2px solid var(--phosphor); border-radius:50%; transform:translate(-50%,-50%); box-shadow:0 0 0 1px rgba(0,0,0,0.4), 0 0 8px rgba(127,230,168,0.5); cursor:pointer; transition:transform 0.08s; }
+  .marker:hover { border-color:var(--danger); box-shadow:0 0 0 1px rgba(0,0,0,0.4), 0 0 10px rgba(217,113,79,0.7); }
+  .marker.manual { border-color:var(--agar); border-style:solid; }
+  .marker.manual:hover { border-color:var(--danger); }
+  .readout { background:#0d1a12; border:1px solid var(--phosphor-dim); border-radius:10px; padding:22px 24px; margin-bottom:20px; }
+  .readout-label { font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--phosphor); opacity:0.7; text-transform:uppercase; letter-spacing:0.1em; margin-bottom:6px; }
+  .readout-count { font-family:'IBM Plex Mono',monospace; font-size:58px; font-weight:500; color:var(--phosphor); line-height:1; text-shadow:0 0 18px rgba(127,230,168,0.35); }
+  .readout-break { margin-top:12px; font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--text-dim); line-height:1.9; }
+  .readout-break b { color:var(--text); font-weight:500; }
+  .engine-tag { font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.08em; text-transform:uppercase; margin-top:8px; color:var(--text-dim); }
+  .engine-tag b { color:var(--phosphor); }
+  .howto { background:var(--panel); border:1px solid var(--panel-border); border-radius:10px; padding:18px 20px; margin-bottom:20px; font-size:13px; color:var(--text-dim); line-height:1.7; }
+  .howto b { color:var(--text); font-weight:500; }
+  .dot { display:inline-block; width:10px; height:10px; border-radius:50%; vertical-align:middle; margin:0 2px; }
+  .dot.auto { border:2px solid var(--phosphor); }
+  .dot.manual { border:2px solid var(--agar); }
+  .controls { display:flex; flex-direction:column; gap:10px; }
+  button { font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:14px; border:none; border-radius:6px; padding:12px; cursor:pointer; transition:filter 0.15s; }
+  .btn-primary { background:var(--phosphor); color:#0d1410; }
+  .btn-primary:hover { filter:brightness(1.08); }
+  .btn-ghost { background:transparent; color:var(--text-dim); border:1px solid var(--panel-border); }
+  .btn-ghost:hover { color:var(--text); border-color:var(--text-dim); }
+  .sens { margin-top:6px; }
+  .sens label { display:block; font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:8px; }
+  .sens input[type=range] { width:100%; accent-color:var(--agar); }
+  .sens .val { font-family:'IBM Plex Mono',monospace; color:var(--agar); font-size:12px; }
+  .flash { background:rgba(217,113,79,0.12); border:1px solid var(--danger); color:var(--danger); font-size:13px; padding:10px 14px; border-radius:6px; margin-bottom:20px; font-family:'IBM Plex Mono',monospace; }
+  .spinner { display:none; text-align:center; padding:60px 0; color:var(--text-dim); font-family:'IBM Plex Mono',monospace; font-size:13px; }
+  .note { font-size:12px; color:var(--text-dim); line-height:1.6; margin-top:4px; }
+  footer { max-width:1080px; margin:0 auto; padding:0 32px 40px; color:var(--text-dim); font-family:'IBM Plex Mono',monospace; font-size:11px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">colony<span>·</span>counter</div>
+  <div class="rig-label" id="engineLabel">DETECTION</div>
+</header>
+<main>
+  <div id="uploadView">
+    <h1>Count colonies from a plate photo</h1>
+    <p class="sub">Upload a photo. Colonies are detected automatically, then you correct anything it missed or over-counted by clicking — click empty agar to add one, click a marker to remove it.</p>
+    <div id="flash" class="flash" style="display:none;"></div>
+    <label class="dish" id="dropZone">
+      <div class="dish-icon">+</div>
+      <div class="dish-text"><strong>Drop a plate photo</strong><br>or click to browse — JPG or PNG</div>
+    </label>
+    <input type="file" id="fileInput" accept=".jpg,.jpeg,.png">
+    <div class="spinner" id="spinner">Analysing plate…</div>
+  </div>
+  <div id="workView">
+    <h1>Review the count</h1>
+    <p class="sub">Green rings are auto-detected. Add any it missed by clicking the agar; remove a wrong one by clicking its ring.</p>
+    <div id="emptyHint" class="flash" style="display:none; background:rgba(201,154,78,0.12); border-color:var(--agar); color:var(--agar);">
+      Auto-detection found nothing to count here. Click each colony to count it manually, or lower the sensitivity and re-run.
+    </div>
+    <div class="bench">
+      <div class="stage-wrap"><div id="stage"><img id="plateImg" alt="Plate"></div></div>
+      <div>
+        <div class="readout">
+          <div class="readout-label">Total count</div>
+          <div class="readout-count" id="countDisplay">0</div>
+          <div class="readout-break">auto <b id="autoCount">0</b> · added <b id="manualCount">0</b> · removed <b id="removedCount">0</b></div>
+          <div class="engine-tag" id="engineTag"></div>
+        </div>
+        <div class="howto">
+          <span class="dot auto"></span> <b>Auto</b> — detected by the app<br>
+          <span class="dot manual"></span> <b>Added</b> — placed by you<br>
+          <div class="note" style="margin-top:10px;">Click empty agar to add. Click any ring to remove it.</div>
+        </div>
+        <div class="controls">
+          <div class="sens">
+            <label>Sensitivity <span class="val" id="sensVal">standard</span></label>
+            <input type="range" id="sens" min="0" max="100" step="10" value="50">
+            <div class="note">Left = catch more (smaller/fainter colonies, more noise). Right = stricter. Release to re-detect.</div>
+          </div>
+          <button class="btn-ghost" id="resetBtn">Reset this plate</button>
+          <div class="note" style="margin-top:-4px;">Clears your edits and re-detects from scratch.</div>
+          <button class="btn-ghost" id="trainBtn">Save this plate for training</button>
+          <div class="note" style="margin-top:-4px;">Adds your corrected plate to the dataset, so the next retrain learns from it. (Doesn't change the current model.)</div>
+          <button class="btn-primary" id="newBtn">Count another plate</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+<footer>Auto-count is a starting point — your clicks are the final count. Validate against manual counts before relying on it.</footer>
+<script>
+const fileInput=document.getElementById('fileInput'),dropZone=document.getElementById('dropZone'),uploadView=document.getElementById('uploadView'),workView=document.getElementById('workView'),spinner=document.getElementById('spinner'),flash=document.getElementById('flash'),stage=document.getElementById('stage'),plateImg=document.getElementById('plateImg'),countDisplay=document.getElementById('countDisplay'),autoCountEl=document.getElementById('autoCount'),manualCountEl=document.getElementById('manualCount'),removedCountEl=document.getElementById('removedCount'),sens=document.getElementById('sens'),sensVal=document.getElementById('sensVal'),engineTag=document.getElementById('engineTag'),engineLabel=document.getElementById('engineLabel');
+let currentFile=null,colonies=[],imgW=0,imgH=0,currentImageData=null;
+fetch('/status').then(r=>r.json()).then(s=>{engineLabel.textContent=s.model_available?'TRAINED MODEL':'CLASSICAL CV';if(s.model_available)engineLabel.classList.add('model');}).catch(()=>{});
+function showFlash(m){flash.textContent=m;flash.style.display='block';}
+function clearFlash(){flash.style.display='none';}
+function labelSensitivity(v){if(v<=30)return'high';if(v>=70)return'low';return'standard';}
+sens.addEventListener('input',()=>{sensVal.textContent=labelSensitivity(+sens.value);});
+dropZone.addEventListener('click',()=>fileInput.click());
+['dragover'].forEach(e=>dropZone.addEventListener(e,ev=>{ev.preventDefault();dropZone.classList.add('drag-over');}));
+['dragleave','drop'].forEach(e=>dropZone.addEventListener(e,ev=>{ev.preventDefault();dropZone.classList.remove('drag-over');}));
+dropZone.addEventListener('drop',ev=>{ev.preventDefault();if(ev.dataTransfer.files[0]){currentFile=ev.dataTransfer.files[0];analyze(false);}});
+fileInput.addEventListener('change',()=>{if(fileInput.files[0]){currentFile=fileInput.files[0];analyze(false);}});
+async function analyze(preserveManual){clearFlash();if(!preserveManual){dropZone.style.display='none';spinner.style.display='block';}const fd=new FormData();fd.append('plate_image',currentFile);fd.append('sensitivity',sens.value);try{const res=await fetch('/analyze',{method:'POST',body:fd});const data=await res.json();if(!res.ok){showFlash(data.error||'Something went wrong.');dropZone.style.display='flex';spinner.style.display='none';return;}imgW=data.width;imgH=data.height;currentImageData=data.image;const autoNew=data.colonies.map(c=>({...c,source:'auto',removed:false}));if(preserveManual){const kept=colonies.filter(c=>c.source==='manual'&&!c.removed);colonies=autoNew.concat(kept);}else{colonies=autoNew;}plateImg.src=data.image;plateImg.onload=()=>{renderMarkers();};document.getElementById('emptyHint').style.display=(data.count===0&&colonies.length===0)?'block':'none';engineTag.innerHTML=data.engine==='model'?'engine: <b>trained model</b>':'engine: classical CV';uploadView.style.display='none';workView.style.display='block';spinner.style.display='none';renderMarkers();}catch(err){showFlash('Could not reach the server.');dropZone.style.display='flex';spinner.style.display='none';}}
+function renderMarkers(){stage.querySelectorAll('.marker').forEach(m=>m.remove());const rect=plateImg.getBoundingClientRect();const sx=rect.width/imgW,sy=rect.height/imgH;colonies.forEach((c,i)=>{if(c.removed)return;const el=document.createElement('div');el.className='marker'+(c.source==='manual'?' manual':'');const d=Math.max(c.r*2*sx,14);el.style.left=(c.x*sx)+'px';el.style.top=(c.y*sy)+'px';el.style.width=d+'px';el.style.height=d+'px';el.addEventListener('click',ev=>{ev.stopPropagation();colonies[i].removed=true;renderMarkers();updateCount();});stage.appendChild(el);});updateCount();}
+stage.addEventListener('click',ev=>{if(ev.target!==plateImg&&ev.target!==stage)return;const rect=plateImg.getBoundingClientRect();const sx=imgW/rect.width,sy=imgH/rect.height;const x=(ev.clientX-rect.left)*sx,y=(ev.clientY-rect.top)*sy;colonies.push({x,y,r:8,source:'manual',removed:false});renderMarkers();});
+function updateCount(){const auto=colonies.filter(c=>c.source==='auto'&&!c.removed).length;const manual=colonies.filter(c=>c.source==='manual'&&!c.removed).length;const removed=colonies.filter(c=>c.source==='auto'&&c.removed).length;countDisplay.textContent=auto+manual;autoCountEl.textContent=auto;manualCountEl.textContent=manual;removedCountEl.textContent=removed;}
+window.addEventListener('resize',renderMarkers);
+document.getElementById('resetBtn').addEventListener('click',()=>{if(currentFile)analyze(false);});
+sens.addEventListener('change',()=>{if(currentFile)analyze(true);});
+document.getElementById('newBtn').addEventListener('click',()=>{uploadView.style.display='block';workView.style.display='none';dropZone.style.display='flex';fileInput.value='';colonies=[];currentFile=null;});
+document.getElementById('trainBtn').addEventListener('click',async()=>{if(!currentImageData){return;}const pts=colonies.filter(c=>!c.removed).map(c=>({x:c.x,y:c.y,cls:0}));const btn=document.getElementById('trainBtn');const orig=btn.textContent;btn.textContent='Saving…';try{const res=await fetch('/save_for_training',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:currentImageData,points:pts,width:imgW,height:imgH})});const d=await res.json();btn.textContent=d.ok?('Saved '+d.saved+' colonies ✓'):'Save failed';}catch(e){btn.textContent='Save failed';}setTimeout(()=>{btn.textContent=orig;},2500);});
+</script>
+</body>
+</html>

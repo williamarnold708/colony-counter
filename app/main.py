@@ -1,10 +1,12 @@
+import io
 import os
 import json
 import base64
 import time
+import zipfile
 import cv2
 import numpy as np
-from flask import Flask, request, render_template, jsonify
+from flask import Flask, request, render_template, jsonify, send_file, abort
 
 from detector import detect_colonies, _resize_for_work
 import model_detect
@@ -15,8 +17,10 @@ UPLOAD_DIR = os.path.join(BASE_DIR, "static", "uploads")
 # in the next retrain. This connects the "using" loop to the "improving" loop.
 DATASET_IMAGES = os.path.join(BASE_DIR, "labeller", "data", "images")
 DATASET_LABELS = os.path.join(BASE_DIR, "labeller", "data", "labels")
+DATASET_CLASSES = os.path.join(BASE_DIR, "labeller", "data", "classes.txt")
 ALLOWED_EXT = {"png", "jpg", "jpeg"}
 DEFAULT_BOX_FRAC = 0.030
+EXPORT_TOKEN = os.environ.get("EXPORT_TOKEN")
 
 app = Flask(__name__,
             template_folder=os.path.join(BASE_DIR, "templates"),
@@ -124,6 +128,36 @@ def save_for_training():
         f.write("\n".join(lines) + ("\n" if lines else ""))
 
     return jsonify({"ok": True, "saved": len(lines), "name": stem})
+
+
+@app.route("/export_training_data")
+def export_training_data():
+    """
+    Zips up the corrected images/labels collected via /save_for_training,
+    in the layout training/colony_training.ipynb expects (images/, labels/,
+    classes.txt). Render's disk is ephemeral, so this is how you pull
+    accumulated corrections off a deployed instance before a restart wipes
+    them.
+    """
+    if not EXPORT_TOKEN:
+        abort(404)
+    if request.args.get("token") != EXPORT_TOKEN:
+        abort(403)
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name in os.listdir(DATASET_IMAGES):
+            if name != ".gitkeep":
+                zf.write(os.path.join(DATASET_IMAGES, name), f"images/{name}")
+        for name in os.listdir(DATASET_LABELS):
+            if name != ".gitkeep":
+                zf.write(os.path.join(DATASET_LABELS, name), f"labels/{name}")
+        if os.path.exists(DATASET_CLASSES):
+            zf.write(DATASET_CLASSES, "classes.txt")
+    buf.seek(0)
+
+    return send_file(buf, mimetype="application/zip", as_attachment=True,
+                      download_name=f"training_data_{int(time.time())}.zip")
 
 
 @app.route("/status")

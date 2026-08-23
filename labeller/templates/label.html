@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Colony Labeller</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#12161a;--panel:#1b2128;--border:#2a323b;--text:#e7e4dd;--dim:#8b939c;--amber:#c99a4e;--phos:#7fe6a8;--phos-dim:#2f4a3c;--danger:#d9714f;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;height:100vh;overflow:hidden}
+  header{padding:14px 24px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border)}
+  .brand{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:16px}
+  .brand span{color:var(--amber)}
+  .progress-wrap{display:flex;align-items:center;gap:14px;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--dim)}
+  .bar{width:180px;height:6px;background:var(--border);border-radius:3px;overflow:hidden}
+  .bar-fill{height:100%;background:var(--phos);width:0%;transition:width 0.3s}
+  .layout{display:grid;grid-template-columns:1fr 260px;height:calc(100vh - 57px)}
+  .stage-col{padding:20px;overflow:auto;display:flex;align-items:flex-start;justify-content:center}
+  #stage{position:relative;display:inline-block;line-height:0;cursor:crosshair}
+  #plate{max-width:100%;max-height:calc(100vh - 100px);display:block;user-select:none;-webkit-user-drag:none}
+  .pt{position:absolute;width:18px;height:18px;border-radius:50%;border:2px solid var(--phos);transform:translate(-50%,-50%);cursor:pointer;box-shadow:0 0 0 1px rgba(0,0,0,.5)}
+  .pt:hover{border-color:var(--danger);background:rgba(217,113,79,.25)}
+  .pt.c1{border-color:#5ab4e6}
+  .pt.c2{border-color:var(--amber)}
+  aside{border-left:1px solid var(--border);padding:20px;display:flex;flex-direction:column;gap:16px;overflow:auto}
+  .count-box{background:#0d1a12;border:1px solid var(--phos-dim);border-radius:8px;padding:16px}
+  .count-label{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--phos);opacity:.7;text-transform:uppercase;letter-spacing:.1em}
+  .count-num{font-family:'IBM Plex Mono',monospace;font-size:42px;color:var(--phos);line-height:1.1;text-shadow:0 0 14px rgba(127,230,168,.3)}
+  .fname{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--dim);word-break:break-all;line-height:1.5}
+  .help{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:14px;font-size:12.5px;color:var(--dim);line-height:1.8}
+  .help b{color:var(--text);font-weight:500}
+  kbd{font-family:'IBM Plex Mono',monospace;font-size:11px;background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:1px 5px;color:var(--text)}
+  .cls-row{display:flex;gap:6px;flex-wrap:wrap}
+  .cls-btn{flex:1;min-width:60px;padding:7px 4px;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--dim);font-size:11px;cursor:pointer;font-family:'IBM Plex Mono',monospace}
+  .cls-btn.active{border-color:var(--phos);color:var(--phos);background:rgba(127,230,168,.08)}
+  button.act{width:100%;padding:11px;border:none;border-radius:6px;cursor:pointer;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13px}
+  .save{background:var(--phos);color:#0d1410}
+  .save:hover{filter:brightness(1.08)}
+  .ghost{background:transparent;border:1px solid var(--border);color:var(--dim)}
+  .ghost:hover{color:var(--text)}
+  .spacer{flex:1}
+  .msg{font-family:'IBM Plex Mono',monospace;font-size:11px;padding:8px 10px;border-radius:5px;display:none}
+  .msg.ok{background:rgba(127,230,168,.1);border:1px solid var(--phos-dim);color:var(--phos)}
+  .msg.err{background:rgba(217,113,79,.12);border:1px solid var(--danger);color:var(--danger)}
+  .done-screen{display:none;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;text-align:center;color:var(--dim)}
+  .done-screen h2{font-family:'Space Grotesk',sans-serif;color:var(--text);margin:0}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">colony<span>·</span>labeller</div>
+  <div class="progress-wrap"><span id="progText">0 / 0</span><div class="bar"><div class="bar-fill" id="progBar"></div></div></div>
+</header>
+<div class="layout" id="main">
+  <div class="stage-col"><div id="stage"><img id="plate" alt="Plate to label"></div></div>
+  <aside>
+    <div class="count-box"><div class="count-label">Colonies marked</div><div class="count-num" id="count">0</div></div>
+    <div class="fname" id="fname">—</div>
+    <div id="clsWrap" style="display:none;"><div class="count-label" style="color:var(--dim);margin-bottom:6px;">Class for new marks</div><div class="cls-row" id="clsRow"></div></div>
+    <div class="help"><b>Click</b> a colony to mark it<br><b>Click a mark</b> to remove it<br><kbd>S</kbd> save &amp; next plate<br><kbd>K</kbd> skip this plate<br><kbd>Z</kbd> undo last mark<br><kbd>C</kbd> clear all marks</div>
+    <div class="msg" id="msg"></div>
+    <div class="spacer"></div>
+    <button class="act save" id="saveBtn">Save &amp; next plate</button>
+    <button class="act ghost" id="skipBtn">Skip this plate</button>
+    <button class="act ghost" id="clearBtn">Clear all marks</button>
+  </aside>
+</div>
+<div class="done-screen" id="doneScreen">
+  <h2>All plates labelled</h2>
+  <p>Your dataset is in <code>labeller/data/</code> — images and YOLO labels, ready for training.</p>
+</div>
+<script>
+const stage=document.getElementById('stage'),plate=document.getElementById('plate'),countEl=document.getElementById('count'),fnameEl=document.getElementById('fname'),progText=document.getElementById('progText'),progBar=document.getElementById('progBar'),msgEl=document.getElementById('msg'),clsWrap=document.getElementById('clsWrap'),clsRow=document.getElementById('clsRow');
+let cur=null,points=[],classes=['colony'],activeCls=0;
+function msg(t,k){msgEl.textContent=t;msgEl.className='msg '+k;msgEl.style.display='block';setTimeout(()=>{msgEl.style.display='none';},2200);}
+async function refreshState(){const r=await fetch('/api/state');const s=await r.json();classes=s.classes||['colony'];progText.textContent=`${s.done} / ${s.total}`;progBar.style.width=(s.total?(s.done/s.total*100):0)+'%';renderClasses();if(!s.next){document.getElementById('main').style.display='none';document.getElementById('doneScreen').style.display='flex';return null;}return s.next;}
+function renderClasses(){if(classes.length<=1){clsWrap.style.display='none';return;}clsWrap.style.display='block';clsRow.innerHTML='';classes.forEach((c,i)=>{const b=document.createElement('button');b.className='cls-btn'+(i===activeCls?' active':'');b.textContent=(i+1)+' '+c;b.onclick=()=>{activeCls=i;renderClasses();};clsRow.appendChild(b);});}
+async function loadPlate(name){const r=await fetch('/api/image/'+encodeURIComponent(name));const d=await r.json();if(d.error){msg(d.error,'err');return;}cur={name:d.name,width:d.width,height:d.height};points=(d.points||[]).map(p=>({x:p.x,y:p.y,cls:p.cls||0}));fnameEl.textContent=d.name;plate.src=d.image;plate.onload=()=>render();}
+function render(){stage.querySelectorAll('.pt').forEach(e=>e.remove());const rect=plate.getBoundingClientRect();const sx=rect.width/cur.width,sy=rect.height/cur.height;points.forEach((p,i)=>{const el=document.createElement('div');el.className='pt'+(p.cls?(' c'+p.cls):'');el.style.left=(p.x*sx)+'px';el.style.top=(p.y*sy)+'px';el.onclick=(ev)=>{ev.stopPropagation();points.splice(i,1);render();};stage.appendChild(el);});countEl.textContent=points.length;}
+stage.addEventListener('click',ev=>{if(!cur)return;if(ev.target!==plate&&ev.target!==stage)return;const rect=plate.getBoundingClientRect();const x=(ev.clientX-rect.left)*(cur.width/rect.width),y=(ev.clientY-rect.top)*(cur.height/rect.height);points.push({x,y,cls:activeCls});render();});
+async function save(){if(!cur)return;const r=await fetch('/api/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:cur.name,points,width:cur.width,height:cur.height})});const d=await r.json();if(d.error){msg(d.error,'err');return;}msg(`Saved ${d.saved} colonies`,'ok');const next=await refreshState();if(next)loadPlate(next);}
+async function skip(){if(!cur)return;await fetch('/api/skip',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:cur.name})});const next=await refreshState();if(next)loadPlate(next);}
+document.getElementById('saveBtn').onclick=save;document.getElementById('skipBtn').onclick=skip;document.getElementById('clearBtn').onclick=()=>{points=[];render();};
+document.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;const k=e.key.toLowerCase();if(k==='s'){e.preventDefault();save();}else if(k==='k'){e.preventDefault();skip();}else if(k==='z'){e.preventDefault();points.pop();render();}else if(k==='c'){e.preventDefault();points=[];render();}else if(/^[1-9]$/.test(k)){const i=parseInt(k)-1;if(i<classes.length){activeCls=i;renderClasses();}}});
+window.addEventListener('resize',()=>{if(cur)render();});
+(async()=>{const next=await refreshState();if(next)loadPlate(next);})();
+</script>
+</body>
+</html>

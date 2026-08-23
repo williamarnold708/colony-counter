@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Trained model (large; distribute via releases, not git)
+app/model/*.pt
+
+# Runtime uploads
+static/uploads/*
+!static/uploads/.gitkeep
+
+# Labeller working data (users generate their own)
+labeller/inbox/*
+!labeller/inbox/.gitkeep
+labeller/data/images/*
+!labeller/data/images/.gitkeep
+labeller/data/labels/*
+!labeller/data/labels/.gitkeep
+labeller/data/progress.json
+labeller/data/classes.txt
+
+# OS
+.DS_Store
+Thumbs.db

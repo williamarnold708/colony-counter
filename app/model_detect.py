@@ -117,7 +117,7 @@ def detect_colonies_model(image_bgr, conf=0.25):
 
     # iou=0.45 tightens YOLO's own non-max suppression so heavily overlapping
     # boxes are merged before they reach us.
-    results = model.predict(work, conf=conf, imgsz=1024, iou=0.45, verbose=False)
+    results = model.predict(work, conf=conf, imgsz=640, iou=0.45, verbose=False)
     colonies = []
     if results:
         for b in results[0].boxes:

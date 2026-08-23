@@ -5,30 +5,59 @@ Uses a trained detector (best.pt from the training notebook) to find colonies.
 Returns the same coordinate contract as the classical detector, so the app and
 its click-correction UI work unchanged.
 
-The model file lives at app/model/best.pt. If it's absent, is_available()
-returns False and the app falls back to classical CV.
+The model file lives at app/model/best.pt. If it's missing locally, it's
+downloaded from the GitHub Release asset at MODEL_URL on first use. If that
+also fails, is_available() returns False and the app falls back to classical CV.
 """
 import os
 import math
+import urllib.request
 
 MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                           "model", "best.pt")
+MODEL_URL = os.environ.get(
+    "MODEL_URL",
+    "https://github.com/williamarnold708/colony-counter/releases/download/model-v1.0/best.pt",
+)
 
 _model = None
 _load_failed = False
 
 
+def _ensure_downloaded():
+    if os.path.exists(MODEL_PATH):
+        return True
+    if not MODEL_URL:
+        return False
+    print(f"[model_detect] downloading model from {MODEL_URL}")
+    tmp_path = f"{MODEL_PATH}.{os.getpid()}.part"
+    try:
+        os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
+        urllib.request.urlretrieve(MODEL_URL, tmp_path)
+        os.replace(tmp_path, MODEL_PATH)
+        print("[model_detect] model download complete")
+        return True
+    except Exception as e:
+        print(f"[model_detect] model download failed: {e}")
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        return False
+
+
 def is_available():
     if _load_failed:
         return False
-    return os.path.exists(MODEL_PATH)
+    return os.path.exists(MODEL_PATH) or bool(MODEL_URL)
 
 
 def _get_model():
     global _model, _load_failed
     if _model is not None:
         return _model
-    if _load_failed or not os.path.exists(MODEL_PATH):
+    if _load_failed:
+        return None
+    if not _ensure_downloaded():
+        _load_failed = True
         return None
     try:
         from ultralytics import YOLO
@@ -38,6 +67,13 @@ def _get_model():
         print(f"[model_detect] could not load model: {e}")
         _load_failed = True
         return None
+
+
+def ensure_model_ready():
+    """Load (downloading if needed) the model at startup, so the first
+    request isn't the one paying for the download/load. Safe to call even
+    when the model can't be obtained; the app falls back to classical CV."""
+    return _get_model() is not None
 
 
 WORK_EDGE = 1400

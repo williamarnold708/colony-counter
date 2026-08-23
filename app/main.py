@@ -22,6 +22,12 @@ app = Flask(__name__,
             template_folder=os.path.join(BASE_DIR, "templates"),
             static_folder=os.path.join(BASE_DIR, "static"))
 
+# Downloads best.pt from the GitHub Release if it's not already on disk, so
+# the model is ready before the first request (works under gunicorn too,
+# not just the `python main.py` dev path below).
+engine = "trained model" if model_detect.ensure_model_ready() else "classical CV (model unavailable)"
+print(f"Colony counter starting. Detection engine: {engine}")
+
 
 def allowed(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXT
@@ -127,6 +133,4 @@ def status():
 
 if __name__ == "__main__":
     os.makedirs(UPLOAD_DIR, exist_ok=True)
-    engine = "trained model" if model_detect.is_available() else "classical CV (no model file found)"
-    print(f"Colony counter starting. Detection engine: {engine}")
     app.run(debug=True, host="0.0.0.0", port=5000)

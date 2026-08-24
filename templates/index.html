@@ -75,7 +75,7 @@
 <main>
   <div id="uploadView">
     <h1>Count colonies from a plate photo</h1>
-    <p class="sub">Upload a photo. Colonies are detected automatically, then you correct anything it missed or over-counted by clicking — click empty agar to add one, click a marker to remove it.</p>
+    <p class="sub">Upload a photo. Colonies are detected automatically, then you correct anything it missed or over-counted by clicking: select unmarked colonies to add them to the count, or click a marker to remove it.</p>
     <div id="flash" class="flash" style="display:none;"></div>
     <label class="dish" id="dropZone">
       <div class="dish-icon">+</div>
@@ -86,7 +86,7 @@
   </div>
   <div id="workView">
     <h1>Review the count</h1>
-    <p class="sub">Green rings are auto-detected. Add any it missed by clicking the agar; remove a wrong one by clicking its ring.</p>
+    <p class="sub">Green rings are auto-detected. Select any unmarked colonies to add them to the count; click a ring to remove it.</p>
     <div id="emptyHint" class="flash" style="display:none; background:rgba(201,154,78,0.12); border-color:var(--agar); color:var(--agar);">
       Auto-detection found nothing to count here. Click each colony to count it manually, or lower the sensitivity and re-run.
     </div>
@@ -100,9 +100,9 @@
           <div class="engine-tag" id="engineTag"></div>
         </div>
         <div class="howto">
-          <span class="dot auto"></span> <b>Auto</b> — detected by the app<br>
-          <span class="dot manual"></span> <b>Added</b> — placed by you<br>
-          <div class="note" style="margin-top:10px;">Click empty agar to add. Click any ring to remove it.</div>
+          <span class="dot auto"></span> <b>Auto</b> (detected by the app)<br>
+          <span class="dot manual"></span> <b>Added</b> (placed by you)<br>
+          <div class="note" style="margin-top:10px;">Select unmarked colonies to add them to the count. Click any ring to remove it.</div>
         </div>
         <div class="controls">
           <div class="sens">
@@ -120,7 +120,7 @@
     </div>
   </div>
 </main>
-<footer>Auto-count is a starting point — your clicks are the final count. Validate against manual counts before relying on it.</footer>
+<footer>Auto-count is a starting point. Your clicks are the final count. Validate against manual counts before relying on it.</footer>
 <script>
 const fileInput=document.getElementById('fileInput'),dropZone=document.getElementById('dropZone'),uploadView=document.getElementById('uploadView'),workView=document.getElementById('workView'),spinner=document.getElementById('spinner'),flash=document.getElementById('flash'),stage=document.getElementById('stage'),plateImg=document.getElementById('plateImg'),countDisplay=document.getElementById('countDisplay'),autoCountEl=document.getElementById('autoCount'),manualCountEl=document.getElementById('manualCount'),removedCountEl=document.getElementById('removedCount'),sens=document.getElementById('sens'),sensVal=document.getElementById('sensVal'),engineTag=document.getElementById('engineTag'),engineLabel=document.getElementById('engineLabel');
 let currentFile=null,colonies=[],imgW=0,imgH=0,currentImageData=null;

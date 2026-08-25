@@ -131,7 +131,7 @@ let currentFile=null,colonies=[],imgW=0,imgH=0,currentImageData=null;
 fetch('/status').then(r=>r.json()).then(s=>{engineLabel.textContent=s.model_available?'TRAINED MODEL':'CLASSICAL CV';if(s.model_available)engineLabel.classList.add('model');}).catch(()=>{});
 function showFlash(m){flash.textContent=m;flash.style.display='block';}
 function clearFlash(){flash.style.display='none';}
-function labelSensitivity(v){if(v<=30)return'high';if(v>=70)return'low';return'standard';}
+function labelSensitivity(v){if(v<=30)return'low';if(v>=70)return'high';return'standard';}
 sens.addEventListener('input',()=>{sensVal.textContent=labelSensitivity(+sens.value);});
 dropZone.addEventListener('click',()=>fileInput.click());
 browseLink.addEventListener('click',()=>fileInputBrowse.click());

@@ -115,14 +115,18 @@ def save_for_training():
     cv2.imwrite(os.path.join(DATASET_IMAGES, stem + ".jpg"), img,
                 [cv2.IMWRITE_JPEG_QUALITY, 92])
 
-    box = DEFAULT_BOX_FRAC * max(width, height)
-    bw = box / width
-    bh = box / height
+    default_box = DEFAULT_BOX_FRAC * max(width, height)
     lines = []
     for p in points:
         xc = min(max(float(p["x"]) / width, 0.0), 1.0)
         yc = min(max(float(p["y"]) / height, 0.0), 1.0)
         cls = int(p.get("cls", 0))
+        # Use the colony's own detected/adjusted size when we have one, instead
+        # of a fixed box for every mark regardless of how big it actually is.
+        r = p.get("r")
+        box = max(float(r) * 2, 6) if r else default_box
+        bw = box / width
+        bh = box / height
         lines.append(f"{cls} {xc:.6f} {yc:.6f} {bw:.6f} {bh:.6f}")
     with open(os.path.join(DATASET_LABELS, stem + ".txt"), "w") as f:
         f.write("\n".join(lines) + ("\n" if lines else ""))

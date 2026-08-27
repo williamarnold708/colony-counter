@@ -118,7 +118,8 @@ def get_image(name):
             sx = w / res["width"]
             sy = h / res["height"]
             for c in res["colonies"]:
-                points.append({"x": c["x"] * sx, "y": c["y"] * sy, "cls": 0})
+                points.append({"x": c["x"] * sx, "y": c["y"] * sy, "cls": 0,
+                               "r": c["r"] * sx})
         except Exception:
             points = []
 
@@ -133,7 +134,8 @@ def get_image(name):
                     continue
                 cls, xc, yc, bw, bh = parts[:5]
                 points.append({"x": float(xc) * w, "y": float(yc) * h,
-                               "cls": int(cls)})
+                               "cls": int(cls),
+                               "r": max(float(bw) * w, float(bh) * h) / 2})
 
     ok, buf = cv2.imencode(".jpg", work, [cv2.IMWRITE_JPEG_QUALITY, 88])
     b64 = base64.b64encode(buf).decode("ascii")
@@ -163,14 +165,16 @@ def save():
     cv2.imwrite(os.path.join(IMAGES, stem + ".jpg"), work,
                 [cv2.IMWRITE_JPEG_QUALITY, 92])
 
-    box = DEFAULT_BOX_FRAC * max(width, height)
-    bw = box / width
-    bh = box / height
+    default_box = DEFAULT_BOX_FRAC * max(width, height)
     lines = []
     for p in points:
         xc = min(max(float(p["x"]) / width, 0.0), 1.0)
         yc = min(max(float(p["y"]) / height, 0.0), 1.0)
         cls = int(p.get("cls", 0))
+        r = p.get("r")
+        box = max(float(r) * 2, 6) if r else default_box
+        bw = box / width
+        bh = box / height
         lines.append(f"{cls} {xc:.6f} {yc:.6f} {bw:.6f} {bh:.6f}")
     with open(os.path.join(LABELS, stem + ".txt"), "w") as f:
         f.write("\n".join(lines) + ("\n" if lines else ""))

@@ -123,10 +123,12 @@ def save_for_training():
         cls = int(p.get("cls", 0))
         # Use the colony's own detected/adjusted size when we have one, instead
         # of a fixed box for every mark regardless of how big it actually is.
-        r = p.get("r")
-        box = max(float(r) * 2, 6) if r else default_box
-        bw = box / width
-        bh = box / height
+        # rx/ry (independent half-width/half-height) let the box match
+        # non-round colonies; r is accepted too for older cached payloads.
+        rx = p.get("rx", p.get("r"))
+        ry = p.get("ry", p.get("r"))
+        bw = max(float(rx) * 2, 6) / width if rx else default_box / width
+        bh = max(float(ry) * 2, 6) / height if ry else default_box / height
         lines.append(f"{cls} {xc:.6f} {yc:.6f} {bw:.6f} {bh:.6f}")
     with open(os.path.join(DATASET_LABELS, stem + ".txt"), "w") as f:
         f.write("\n".join(lines) + ("\n" if lines else ""))

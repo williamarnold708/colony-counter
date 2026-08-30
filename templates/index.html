@@ -106,7 +106,7 @@
         <div class="howto">
           <span class="dot auto"></span> <b>Auto</b> (detected by the app)<br>
           <span class="dot manual"></span> <b>Added</b> (placed by you)<br>
-          <div class="note" style="margin-top:10px;">Select unmarked colonies to add them to the count. Click any ring to remove it. Scroll (or pinch) on a ring to resize it.</div>
+          <div class="note" style="margin-top:10px;">Select unmarked colonies to add them to the count. Click any ring to remove it. Scroll on a ring to resize it (or press and slide up/down on touch).</div>
         </div>
         <div class="controls">
           <div class="sens">
@@ -143,43 +143,31 @@ fileInputBrowse.addEventListener('change',()=>{if(fileInputBrowse.files[0]){curr
 async function analyze(preserveManual){clearFlash();if(!preserveManual){dropZone.style.display='none';browseLink.style.display='none';spinner.style.display='block';}const fd=new FormData();fd.append('plate_image',currentFile);fd.append('sensitivity',100-sens.value);try{const res=await fetch('/analyze',{method:'POST',body:fd});const data=await res.json();if(!res.ok){showFlash(data.error||'Something went wrong.');dropZone.style.display='flex';browseLink.style.display='block';spinner.style.display='none';return;}imgW=data.width;imgH=data.height;currentImageData=data.image;const autoNew=data.colonies.map(c=>({...c,rx:c.r,ry:c.r,source:'auto',removed:false}));if(preserveManual){const kept=colonies.filter(c=>c.source==='manual'&&!c.removed);colonies=autoNew.concat(kept);}else{colonies=autoNew;}plateImg.src=data.image;plateImg.onload=()=>{renderMarkers();};document.getElementById('emptyHint').style.display=(data.count===0&&colonies.length===0)?'block':'none';engineTag.innerHTML=data.engine==='model'?'engine: <b>trained model</b>':'engine: classical CV';uploadView.style.display='none';workView.style.display='block';spinner.style.display='none';renderMarkers();}catch(err){showFlash('Could not reach the server.');dropZone.style.display='flex';browseLink.style.display='block';spinner.style.display='none';}}
 let suppressNextClick=false;
 function clampR(r){const maxR=Math.max(imgW,imgH)*0.15;return Math.min(Math.max(r,4),maxR);}
-let stagePointers=new Map(),pinch=null;
-stage.addEventListener('pointerdown',ev=>{
-  stagePointers.set(ev.pointerId,{x:ev.clientX,y:ev.clientY,target:ev.target});
-  if(stagePointers.size===2&&!pinch){
-    const ids=Array.from(stagePointers.keys());
-    const p0=stagePointers.get(ids[0]),p1=stagePointers.get(ids[1]);
-    const markerEl=(p0.target.closest&&p0.target.closest('.marker'))||(p1.target.closest&&p1.target.closest('.marker'));
-    if(markerEl){
-      const idx=parseInt(markerEl.dataset.idx,10);
-      const dist=Math.hypot(p0.x-p1.x,p0.y-p1.y);
-      pinch={idx,initialDist:dist,initialR:colonies[idx].rx,el:markerEl};
-      ev.preventDefault();
-    }
-  }
-});
-stage.addEventListener('pointermove',ev=>{
-  if(!stagePointers.has(ev.pointerId))return;
-  stagePointers.set(ev.pointerId,{x:ev.clientX,y:ev.clientY,target:ev.target});
-  if(pinch&&stagePointers.size===2){
-    const pts=Array.from(stagePointers.values());
-    const dist=Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y);
-    const r=clampR(pinch.initialR*(dist/pinch.initialDist));
-    colonies[pinch.idx].rx=r;colonies[pinch.idx].ry=r;
+function attachResize(el,idx){
+  let dragging=false,moved=false,startX=0,startY=0,initialR=0;
+  el.addEventListener('pointerdown',ev=>{
+    try{el.setPointerCapture(ev.pointerId);}catch(e){}
+    dragging=true;moved=false;startX=ev.clientX;startY=ev.clientY;initialR=colonies[idx].rx;
+  });
+  el.addEventListener('pointermove',ev=>{
+    if(!dragging)return;
+    const dx=ev.clientX-startX,dy=ev.clientY-startY;
+    if(!moved&&Math.hypot(dx,dy)<6)return;
+    moved=true;
+    const r=clampR(initialR*Math.pow(2,-dy/100));
+    colonies[idx].rx=r;colonies[idx].ry=r;
     const rect=plateImg.getBoundingClientRect();const sx=rect.width/imgW,sy=rect.height/imgH;
-    pinch.el.style.width=Math.max(r*2*sx,14)+'px';
-    pinch.el.style.height=Math.max(r*2*sy,14)+'px';
+    el.style.width=Math.max(r*2*sx,14)+'px';
+    el.style.height=Math.max(r*2*sy,14)+'px';
     ev.preventDefault();
-  }
-});
-function endStagePointer(ev){
-  stagePointers.delete(ev.pointerId);
-  if(pinch&&stagePointers.size<2){suppressNextClick=true;pinch=null;updateCount();}
+  });
+  const end=()=>{if(!dragging)return;dragging=false;if(moved){suppressNextClick=true;updateCount();}};
+  el.addEventListener('pointerup',end);
+  el.addEventListener('pointercancel',end);
+  el.addEventListener('wheel',ev=>{ev.preventDefault();ev.stopPropagation();const c=colonies[idx];const f=ev.deltaY<0?1.1:0.9;c.rx=clampR(c.rx*f);c.ry=clampR(c.ry*f);renderMarkers();});
 }
-stage.addEventListener('pointerup',endStagePointer);
-stage.addEventListener('pointercancel',endStagePointer);
-function renderMarkers(){stage.querySelectorAll('.marker').forEach(m=>m.remove());const rect=plateImg.getBoundingClientRect();const sx=rect.width/imgW,sy=rect.height/imgH;colonies.forEach((c,i)=>{if(c.removed)return;const el=document.createElement('div');el.className='marker'+(c.source==='manual'?' manual':'');el.dataset.idx=i;const dw=Math.max(c.rx*2*sx,14),dh=Math.max(c.ry*2*sy,14);el.style.left=(c.x*sx)+'px';el.style.top=(c.y*sy)+'px';el.style.width=dw+'px';el.style.height=dh+'px';el.addEventListener('click',ev=>{ev.stopPropagation();if(suppressNextClick){suppressNextClick=false;return;}colonies[i].removed=true;renderMarkers();updateCount();});el.addEventListener('wheel',ev=>{ev.preventDefault();ev.stopPropagation();const c2=colonies[i];const f=ev.deltaY<0?1.1:0.9;c2.rx=clampR(c2.rx*f);c2.ry=clampR(c2.ry*f);renderMarkers();});stage.appendChild(el);});updateCount();}
-stage.addEventListener('click',ev=>{if(ev.target!==plateImg&&ev.target!==stage)return;if(suppressNextClick){suppressNextClick=false;return;}const rect=plateImg.getBoundingClientRect();const sx=imgW/rect.width,sy=imgH/rect.height;const x=(ev.clientX-rect.left)*sx,y=(ev.clientY-rect.top)*sy;colonies.push({x,y,rx:8,ry:8,source:'manual',removed:false});renderMarkers();});
+function renderMarkers(){stage.querySelectorAll('.marker').forEach(m=>m.remove());const rect=plateImg.getBoundingClientRect();const sx=rect.width/imgW,sy=rect.height/imgH;colonies.forEach((c,i)=>{if(c.removed)return;const el=document.createElement('div');el.className='marker'+(c.source==='manual'?' manual':'');el.dataset.idx=i;const dw=Math.max(c.rx*2*sx,14),dh=Math.max(c.ry*2*sy,14);el.style.left=(c.x*sx)+'px';el.style.top=(c.y*sy)+'px';el.style.width=dw+'px';el.style.height=dh+'px';el.addEventListener('click',ev=>{ev.stopPropagation();if(suppressNextClick){suppressNextClick=false;return;}colonies[i].removed=true;renderMarkers();updateCount();});attachResize(el,i);stage.appendChild(el);});updateCount();}
+stage.addEventListener('click',ev=>{if(ev.target!==plateImg&&ev.target!==stage)return;const rect=plateImg.getBoundingClientRect();const sx=imgW/rect.width,sy=imgH/rect.height;const x=(ev.clientX-rect.left)*sx,y=(ev.clientY-rect.top)*sy;colonies.push({x,y,rx:8,ry:8,source:'manual',removed:false});renderMarkers();});
 function updateCount(){const auto=colonies.filter(c=>c.source==='auto'&&!c.removed).length;const manual=colonies.filter(c=>c.source==='manual'&&!c.removed).length;const removed=colonies.filter(c=>c.source==='auto'&&c.removed).length;countDisplay.textContent=auto+manual;autoCountEl.textContent=auto;manualCountEl.textContent=manual;removedCountEl.textContent=removed;}
 window.addEventListener('resize',renderMarkers);
 document.getElementById('resetBtn').addEventListener('click',()=>{if(currentFile)analyze(false);});

@@ -36,14 +36,8 @@
   @media (max-width:860px) { .bench { grid-template-columns:1fr; } }
   .stage-wrap { position:relative; background:var(--panel); border:1px solid var(--panel-border); border-radius:12px; overflow:hidden; line-height:0; }
   #stage { position:relative; display:inline-block; width:100%; cursor:crosshair; }
-  .size-panel { position:fixed; transform:translateX(-50%); background:var(--panel); border:1px solid var(--panel-border); border-radius:10px; padding:10px; box-shadow:0 8px 24px rgba(0,0,0,0.5); z-index:50; font-family:'IBM Plex Mono',monospace; }
-  .size-row { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
-  .size-row span { color:var(--text-dim); font-size:11px; width:44px; }
-  .size-btn { width:30px; height:30px; border-radius:6px; border:1px solid var(--panel-border); background:var(--bg); color:var(--text); font-size:16px; cursor:pointer; }
-  .size-btn:hover { border-color:var(--phosphor); color:var(--phosphor); }
-  .size-done { width:100%; margin-top:4px; padding:7px; border:none; border-radius:6px; background:var(--phosphor); color:#0d1410; font-weight:600; cursor:pointer; font-family:'Space Grotesk',sans-serif; }
   #plateImg { width:100%; display:block; user-select:none; -webkit-user-drag:none; }
-  .marker { position:absolute; border:2px solid var(--phosphor); border-radius:50%; transform:translate(-50%,-50%); box-shadow:0 0 0 1px rgba(0,0,0,0.4), 0 0 8px rgba(127,230,168,0.5); cursor:pointer; transition:transform 0.08s; }
+  .marker { position:absolute; border:2px solid var(--phosphor); border-radius:50%; transform:translate(-50%,-50%); box-shadow:0 0 0 1px rgba(0,0,0,0.4), 0 0 8px rgba(127,230,168,0.5); cursor:pointer; transition:transform 0.08s; touch-action:none; -webkit-touch-callout:none; -webkit-user-select:none; user-select:none; }
   .marker:hover { border-color:var(--danger); box-shadow:0 0 0 1px rgba(0,0,0,0.4), 0 0 10px rgba(217,113,79,0.7); }
   .marker.manual { border-color:var(--agar); border-style:solid; }
   .marker.manual:hover { border-color:var(--danger); }
@@ -112,7 +106,7 @@
         <div class="howto">
           <span class="dot auto"></span> <b>Auto</b> (detected by the app)<br>
           <span class="dot manual"></span> <b>Added</b> (placed by you)<br>
-          <div class="note" style="margin-top:10px;">Select unmarked colonies to add them to the count. Click any ring to remove it. Press and hold a ring to resize it.</div>
+          <div class="note" style="margin-top:10px;">Select unmarked colonies to add them to the count. Click any ring to remove it. Scroll (or pinch) on a ring to resize it.</div>
         </div>
         <div class="controls">
           <div class="sens">
@@ -147,50 +141,45 @@ dropZone.addEventListener('drop',ev=>{ev.preventDefault();if(ev.dataTransfer.fil
 fileInput.addEventListener('change',()=>{if(fileInput.files[0]){currentFile=fileInput.files[0];analyze(false);}});
 fileInputBrowse.addEventListener('change',()=>{if(fileInputBrowse.files[0]){currentFile=fileInputBrowse.files[0];analyze(false);}});
 async function analyze(preserveManual){clearFlash();if(!preserveManual){dropZone.style.display='none';browseLink.style.display='none';spinner.style.display='block';}const fd=new FormData();fd.append('plate_image',currentFile);fd.append('sensitivity',100-sens.value);try{const res=await fetch('/analyze',{method:'POST',body:fd});const data=await res.json();if(!res.ok){showFlash(data.error||'Something went wrong.');dropZone.style.display='flex';browseLink.style.display='block';spinner.style.display='none';return;}imgW=data.width;imgH=data.height;currentImageData=data.image;const autoNew=data.colonies.map(c=>({...c,rx:c.r,ry:c.r,source:'auto',removed:false}));if(preserveManual){const kept=colonies.filter(c=>c.source==='manual'&&!c.removed);colonies=autoNew.concat(kept);}else{colonies=autoNew;}plateImg.src=data.image;plateImg.onload=()=>{renderMarkers();};document.getElementById('emptyHint').style.display=(data.count===0&&colonies.length===0)?'block':'none';engineTag.innerHTML=data.engine==='model'?'engine: <b>trained model</b>':'engine: classical CV';uploadView.style.display='none';workView.style.display='block';spinner.style.display='none';renderMarkers();}catch(err){showFlash('Could not reach the server.');dropZone.style.display='flex';browseLink.style.display='block';spinner.style.display='none';}}
-let suppressNextClick=false,sizePanelEl=null;
+let suppressNextClick=false;
 function clampR(r){const maxR=Math.max(imgW,imgH)*0.15;return Math.min(Math.max(r,4),maxR);}
-function closeSizePanel(){if(sizePanelEl){sizePanelEl.remove();sizePanelEl=null;}}
-function openSizePanel(idx,markerEl){
-  closeSizePanel();
-  const rect=markerEl.getBoundingClientRect();
-  const panel=document.createElement('div');
-  panel.className='size-panel';
-  panel.style.left=(rect.left+rect.width/2)+'px';
-  panel.style.top=(rect.bottom+8)+'px';
-  panel.innerHTML='<div class="size-row"><span>Width</span><button class="size-btn" data-act="w-">−</button><button class="size-btn" data-act="w+">+</button></div><div class="size-row"><span>Height</span><button class="size-btn" data-act="h-">−</button><button class="size-btn" data-act="h+">+</button></div><button class="size-done">Done</button>';
-  panel.addEventListener('pointerdown',ev=>ev.stopPropagation());
-  panel.addEventListener('click',ev=>{
-    ev.stopPropagation();
-    const act=ev.target.dataset.act;
-    if(act){
-      const c=colonies[idx];
-      if(act[0]==='w')c.rx=clampR(c.rx*(act.endsWith('+')?1.15:0.87));
-      else c.ry=clampR(c.ry*(act.endsWith('+')?1.15:0.87));
-      const r2=plateImg.getBoundingClientRect();const sx=r2.width/imgW,sy=r2.height/imgH;
-      markerEl.style.width=Math.max(c.rx*2*sx,14)+'px';
-      markerEl.style.height=Math.max(c.ry*2*sy,14)+'px';
-      const nr=markerEl.getBoundingClientRect();
-      panel.style.left=(nr.left+nr.width/2)+'px';
-      panel.style.top=(nr.bottom+8)+'px';
-      return;
+let stagePointers=new Map(),pinch=null;
+stage.addEventListener('pointerdown',ev=>{
+  stagePointers.set(ev.pointerId,{x:ev.clientX,y:ev.clientY,target:ev.target});
+  if(stagePointers.size===2&&!pinch){
+    const ids=Array.from(stagePointers.keys());
+    const p0=stagePointers.get(ids[0]),p1=stagePointers.get(ids[1]);
+    const markerEl=(p0.target.closest&&p0.target.closest('.marker'))||(p1.target.closest&&p1.target.closest('.marker'));
+    if(markerEl){
+      const idx=parseInt(markerEl.dataset.idx,10);
+      const dist=Math.hypot(p0.x-p1.x,p0.y-p1.y);
+      pinch={idx,initialDist:dist,initialR:colonies[idx].rx,el:markerEl};
+      ev.preventDefault();
     }
-    if(ev.target.classList.contains('size-done')){closeSizePanel();updateCount();}
-  });
-  document.body.appendChild(panel);
-  sizePanelEl=panel;
+  }
+});
+stage.addEventListener('pointermove',ev=>{
+  if(!stagePointers.has(ev.pointerId))return;
+  stagePointers.set(ev.pointerId,{x:ev.clientX,y:ev.clientY,target:ev.target});
+  if(pinch&&stagePointers.size===2){
+    const pts=Array.from(stagePointers.values());
+    const dist=Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y);
+    const r=clampR(pinch.initialR*(dist/pinch.initialDist));
+    colonies[pinch.idx].rx=r;colonies[pinch.idx].ry=r;
+    const rect=plateImg.getBoundingClientRect();const sx=rect.width/imgW,sy=rect.height/imgH;
+    pinch.el.style.width=Math.max(r*2*sx,14)+'px';
+    pinch.el.style.height=Math.max(r*2*sy,14)+'px';
+    ev.preventDefault();
+  }
+});
+function endStagePointer(ev){
+  stagePointers.delete(ev.pointerId);
+  if(pinch&&stagePointers.size<2){suppressNextClick=true;pinch=null;updateCount();}
 }
-document.addEventListener('click',ev=>{if(sizePanelEl&&!sizePanelEl.contains(ev.target)&&!ev.target.closest('.marker')){closeSizePanel();}});
-function attachLongPress(el,idx){
-  let timer=null,startX=0,startY=0;
-  const cancel=()=>{if(timer){clearTimeout(timer);timer=null;}};
-  el.addEventListener('pointerdown',ev=>{startX=ev.clientX;startY=ev.clientY;timer=setTimeout(()=>{timer=null;suppressNextClick=true;openSizePanel(idx,el);},450);});
-  el.addEventListener('pointermove',ev=>{if(timer&&Math.hypot(ev.clientX-startX,ev.clientY-startY)>8)cancel();});
-  el.addEventListener('pointerup',cancel);
-  el.addEventListener('pointercancel',cancel);
-  el.addEventListener('wheel',ev=>{ev.preventDefault();ev.stopPropagation();const c=colonies[idx];const f=ev.deltaY<0?1.1:0.9;c.rx=clampR(c.rx*f);c.ry=clampR(c.ry*f);renderMarkers();});
-}
-function renderMarkers(){stage.querySelectorAll('.marker').forEach(m=>m.remove());const rect=plateImg.getBoundingClientRect();const sx=rect.width/imgW,sy=rect.height/imgH;colonies.forEach((c,i)=>{if(c.removed)return;const el=document.createElement('div');el.className='marker'+(c.source==='manual'?' manual':'');el.dataset.idx=i;const dw=Math.max(c.rx*2*sx,14),dh=Math.max(c.ry*2*sy,14);el.style.left=(c.x*sx)+'px';el.style.top=(c.y*sy)+'px';el.style.width=dw+'px';el.style.height=dh+'px';el.addEventListener('click',ev=>{ev.stopPropagation();if(suppressNextClick){suppressNextClick=false;return;}if(sizePanelEl){closeSizePanel();return;}colonies[i].removed=true;renderMarkers();updateCount();});attachLongPress(el,i);stage.appendChild(el);});updateCount();}
-stage.addEventListener('click',ev=>{if(ev.target!==plateImg&&ev.target!==stage)return;if(sizePanelEl){closeSizePanel();return;}const rect=plateImg.getBoundingClientRect();const sx=imgW/rect.width,sy=imgH/rect.height;const x=(ev.clientX-rect.left)*sx,y=(ev.clientY-rect.top)*sy;colonies.push({x,y,rx:8,ry:8,source:'manual',removed:false});renderMarkers();});
+stage.addEventListener('pointerup',endStagePointer);
+stage.addEventListener('pointercancel',endStagePointer);
+function renderMarkers(){stage.querySelectorAll('.marker').forEach(m=>m.remove());const rect=plateImg.getBoundingClientRect();const sx=rect.width/imgW,sy=rect.height/imgH;colonies.forEach((c,i)=>{if(c.removed)return;const el=document.createElement('div');el.className='marker'+(c.source==='manual'?' manual':'');el.dataset.idx=i;const dw=Math.max(c.rx*2*sx,14),dh=Math.max(c.ry*2*sy,14);el.style.left=(c.x*sx)+'px';el.style.top=(c.y*sy)+'px';el.style.width=dw+'px';el.style.height=dh+'px';el.addEventListener('click',ev=>{ev.stopPropagation();if(suppressNextClick){suppressNextClick=false;return;}colonies[i].removed=true;renderMarkers();updateCount();});el.addEventListener('wheel',ev=>{ev.preventDefault();ev.stopPropagation();const c2=colonies[i];const f=ev.deltaY<0?1.1:0.9;c2.rx=clampR(c2.rx*f);c2.ry=clampR(c2.ry*f);renderMarkers();});stage.appendChild(el);});updateCount();}
+stage.addEventListener('click',ev=>{if(ev.target!==plateImg&&ev.target!==stage)return;if(suppressNextClick){suppressNextClick=false;return;}const rect=plateImg.getBoundingClientRect();const sx=imgW/rect.width,sy=imgH/rect.height;const x=(ev.clientX-rect.left)*sx,y=(ev.clientY-rect.top)*sy;colonies.push({x,y,rx:8,ry:8,source:'manual',removed:false});renderMarkers();});
 function updateCount(){const auto=colonies.filter(c=>c.source==='auto'&&!c.removed).length;const manual=colonies.filter(c=>c.source==='manual'&&!c.removed).length;const removed=colonies.filter(c=>c.source==='auto'&&c.removed).length;countDisplay.textContent=auto+manual;autoCountEl.textContent=auto;manualCountEl.textContent=manual;removedCountEl.textContent=removed;}
 window.addEventListener('resize',renderMarkers);
 document.getElementById('resetBtn').addEventListener('click',()=>{if(currentFile)analyze(false);});

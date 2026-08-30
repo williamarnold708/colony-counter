@@ -132,8 +132,8 @@ def save_for_training():
         # non-round colonies; r is accepted too for older cached payloads.
         rx = p.get("rx", p.get("r"))
         ry = p.get("ry", p.get("r"))
-        bw = max(float(rx) * 2, 6) / width if rx else default_box / width
-        bh = max(float(ry) * 2, 6) / height if ry else default_box / height
+        bw = max(float(rx) * 2, 3) / width if rx else default_box / width
+        bh = max(float(ry) * 2, 3) / height if ry else default_box / height
         lines.append(f"{cls} {xc:.6f} {yc:.6f} {bw:.6f} {bh:.6f}")
     with open(os.path.join(DATASET_LABELS, stem + ".txt"), "w") as f:
         f.write("\n".join(lines) + ("\n" if lines else ""))

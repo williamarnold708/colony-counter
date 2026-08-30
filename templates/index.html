@@ -142,7 +142,7 @@ fileInput.addEventListener('change',()=>{if(fileInput.files[0]){currentFile=file
 fileInputBrowse.addEventListener('change',()=>{if(fileInputBrowse.files[0]){currentFile=fileInputBrowse.files[0];analyze(false);}});
 async function analyze(preserveManual){clearFlash();if(!preserveManual){dropZone.style.display='none';browseLink.style.display='none';spinner.style.display='block';}const fd=new FormData();fd.append('plate_image',currentFile);fd.append('sensitivity',100-sens.value);try{const res=await fetch('/analyze',{method:'POST',body:fd});const data=await res.json();if(!res.ok){showFlash(data.error||'Something went wrong.');dropZone.style.display='flex';browseLink.style.display='block';spinner.style.display='none';return;}imgW=data.width;imgH=data.height;currentImageData=data.image;const autoNew=data.colonies.map(c=>({...c,rx:c.r,ry:c.r,source:'auto',removed:false}));if(preserveManual){const kept=colonies.filter(c=>c.source==='manual'&&!c.removed);colonies=autoNew.concat(kept);}else{colonies=autoNew;}plateImg.src=data.image;plateImg.onload=()=>{renderMarkers();};document.getElementById('emptyHint').style.display=(data.count===0&&colonies.length===0)?'block':'none';engineTag.innerHTML=data.engine==='model'?'engine: <b>trained model</b>':'engine: classical CV';uploadView.style.display='none';workView.style.display='block';spinner.style.display='none';renderMarkers();}catch(err){showFlash('Could not reach the server.');dropZone.style.display='flex';browseLink.style.display='block';spinner.style.display='none';}}
 let suppressNextClick=false;
-function clampR(r){const maxR=Math.max(imgW,imgH)*0.15;return Math.min(Math.max(r,4),maxR);}
+function clampR(r){const maxR=Math.max(imgW,imgH)*0.15;return Math.min(Math.max(r,1.5),maxR);}
 function attachResize(el,idx){
   let dragging=false,moved=false,startX=0,startY=0,initialR=0;
   el.addEventListener('pointerdown',ev=>{
@@ -157,8 +157,8 @@ function attachResize(el,idx){
     const r=clampR(initialR*Math.pow(2,-dy/100));
     colonies[idx].rx=r;colonies[idx].ry=r;
     const rect=plateImg.getBoundingClientRect();const sx=rect.width/imgW,sy=rect.height/imgH;
-    el.style.width=Math.max(r*2*sx,14)+'px';
-    el.style.height=Math.max(r*2*sy,14)+'px';
+    el.style.width=Math.max(r*2*sx,8)+'px';
+    el.style.height=Math.max(r*2*sy,8)+'px';
     ev.preventDefault();
   });
   const end=()=>{if(!dragging)return;dragging=false;if(moved){suppressNextClick=true;updateCount();}};
@@ -166,7 +166,7 @@ function attachResize(el,idx){
   el.addEventListener('pointercancel',end);
   el.addEventListener('wheel',ev=>{ev.preventDefault();ev.stopPropagation();const c=colonies[idx];const f=ev.deltaY<0?1.1:0.9;c.rx=clampR(c.rx*f);c.ry=clampR(c.ry*f);renderMarkers();});
 }
-function renderMarkers(){stage.querySelectorAll('.marker').forEach(m=>m.remove());const rect=plateImg.getBoundingClientRect();const sx=rect.width/imgW,sy=rect.height/imgH;colonies.forEach((c,i)=>{if(c.removed)return;const el=document.createElement('div');el.className='marker'+(c.source==='manual'?' manual':'');el.dataset.idx=i;const dw=Math.max(c.rx*2*sx,14),dh=Math.max(c.ry*2*sy,14);el.style.left=(c.x*sx)+'px';el.style.top=(c.y*sy)+'px';el.style.width=dw+'px';el.style.height=dh+'px';el.addEventListener('click',ev=>{ev.stopPropagation();if(suppressNextClick){suppressNextClick=false;return;}colonies[i].removed=true;renderMarkers();updateCount();});attachResize(el,i);stage.appendChild(el);});updateCount();}
+function renderMarkers(){stage.querySelectorAll('.marker').forEach(m=>m.remove());const rect=plateImg.getBoundingClientRect();const sx=rect.width/imgW,sy=rect.height/imgH;colonies.forEach((c,i)=>{if(c.removed)return;const el=document.createElement('div');el.className='marker'+(c.source==='manual'?' manual':'');el.dataset.idx=i;const dw=Math.max(c.rx*2*sx,8),dh=Math.max(c.ry*2*sy,8);el.style.left=(c.x*sx)+'px';el.style.top=(c.y*sy)+'px';el.style.width=dw+'px';el.style.height=dh+'px';el.addEventListener('click',ev=>{ev.stopPropagation();if(suppressNextClick){suppressNextClick=false;return;}colonies[i].removed=true;renderMarkers();updateCount();});attachResize(el,i);stage.appendChild(el);});updateCount();}
 stage.addEventListener('click',ev=>{if(ev.target!==plateImg&&ev.target!==stage)return;const rect=plateImg.getBoundingClientRect();const sx=imgW/rect.width,sy=imgH/rect.height;const x=(ev.clientX-rect.left)*sx,y=(ev.clientY-rect.top)*sy;colonies.push({x,y,rx:8,ry:8,source:'manual',removed:false});renderMarkers();});
 function updateCount(){const auto=colonies.filter(c=>c.source==='auto'&&!c.removed).length;const manual=colonies.filter(c=>c.source==='manual'&&!c.removed).length;const removed=colonies.filter(c=>c.source==='auto'&&c.removed).length;countDisplay.textContent=auto+manual;autoCountEl.textContent=auto;manualCountEl.textContent=manual;removedCountEl.textContent=removed;}
 window.addEventListener('resize',renderMarkers);

@@ -39,7 +39,12 @@ def allowed(filename):
 
 @app.route("/", methods=["GET"])
 def index():
-    return render_template("index.html")
+    resp = app.make_response(render_template("index.html"))
+    # Mobile Safari in particular tends to serve a stale cached copy of this
+    # page after a deploy unless explicitly told not to, which has caused
+    # confusion where a UI fix looks "not live" when it actually is.
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
 
 
 @app.route("/analyze", methods=["POST"])

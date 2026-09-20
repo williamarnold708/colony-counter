@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 from flask import Flask, request, render_template, jsonify, send_file, abort
 
-from detector import detect_colonies, _resize_for_work
+from detector import detect_colonies, probe_colony_size, _resize_for_work
 import model_detect
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -72,10 +72,15 @@ def analyze():
     def area_for(sens):
         return int(20 + (sens / 100.0) * 2480)
 
+    # Optional per-request override of the hybrid split stage (the UI
+    # exposes it as a checkbox so the two can be compared on one plate).
+    hybrid_arg = request.form.get("hybrid")
+    hybrid = None if hybrid_arg is None else hybrid_arg not in ("0", "false", "off")
+
     if use_model:
         conf = 0.10 + (sensitivity / 100.0) * 0.45
         try:
-            result = model_detect.detect_colonies_model(img, conf=conf)
+            result = model_detect.detect_colonies_model(img, conf=conf, hybrid=hybrid)
         except Exception as e:
             print(f"[analyze] model failed, falling back: {e}")
             result = detect_colonies(img, min_area=area_for(sensitivity))
@@ -88,6 +93,31 @@ def analyze():
     result["image"] = "data:image/jpeg;base64," + b64
     result["engine"] = "model" if use_model else "classical"
     return jsonify(result)
+
+
+@app.route("/probe_colony_size", methods=["POST"])
+def probe_colony_size_route():
+    """
+    Given a small crop centred on a manually-placed mark and the mark's
+    position within that crop, measure the real colony blob there so the
+    mark can be auto-sized instead of using a generic default box. Returns
+    {"ok": False} (not an error) whenever the crop doesn't yield a
+    confident measurement - the frontend just keeps the default size then.
+    """
+    payload = request.get_json(force=True)
+    img_data = payload.get("image", "")
+    px, py = payload.get("px"), payload.get("py")
+    if not img_data.startswith("data:image") or px is None or py is None:
+        return jsonify({"ok": False}), 400
+
+    header, b64 = img_data.split(",", 1)
+    raw = base64.b64decode(b64)
+    arr = np.frombuffer(raw, np.uint8)
+    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    if img is None:
+        return jsonify({"ok": False}), 400
+
+    return jsonify(probe_colony_size(img, float(px), float(py)))
 
 
 @app.route("/save_for_training", methods=["POST"])
@@ -122,6 +152,7 @@ def save_for_training():
 
     default_box = DEFAULT_BOX_FRAC * max(width, height)
     lines = []
+    size_sources = []
     for p in points:
         xc = min(max(float(p["x"]) / width, 0.0), 1.0)
         yc = min(max(float(p["y"]) / height, 0.0), 1.0)
@@ -135,8 +166,17 @@ def save_for_training():
         bw = max(float(rx) * 2, 3) / width if rx else default_box / width
         bh = max(float(ry) * 2, 3) / height if ry else default_box / height
         lines.append(f"{cls} {xc:.6f} {yc:.6f} {bw:.6f} {bh:.6f}")
+        # Not every user will notice or bother fixing a mark that auto-fit
+        # couldn't confidently size (see probe_colony_size) - it still gets
+        # saved on whatever fallback size it had. Recording which lines that
+        # applies to (matching this file's line order) means a training run
+        # can find and re-measure or audit them in bulk later, instead of
+        # relying on every submitter to do it by hand.
+        size_sources.append(p.get("sizeSource", "measured"))
     with open(os.path.join(DATASET_LABELS, stem + ".txt"), "w") as f:
         f.write("\n".join(lines) + ("\n" if lines else ""))
+    with open(os.path.join(DATASET_LABELS, stem + ".sizesrc.json"), "w") as f:
+        json.dump(size_sources, f)
 
     return jsonify({"ok": True, "saved": len(lines), "name": stem})
 

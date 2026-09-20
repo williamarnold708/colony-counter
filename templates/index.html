@@ -35,17 +35,31 @@
   .bench { display:grid; grid-template-columns:1fr 300px; gap:28px; align-items:start; }
   @media (max-width:860px) { .bench { grid-template-columns:1fr; } }
   .stage-wrap { position:relative; background:var(--panel); border:1px solid var(--panel-border); border-radius:12px; overflow:hidden; line-height:0; }
-  #stage { position:relative; display:inline-block; width:100%; cursor:crosshair; }
-  #plateImg { width:100%; display:block; user-select:none; -webkit-user-drag:none; }
+  #stage { position:relative; display:inline-block; width:100%; cursor:crosshair; touch-action:pinch-zoom; }
+  #plateImg { width:100%; display:block; user-select:none; -webkit-user-drag:none; -webkit-touch-callout:none; }
   .marker { position:absolute; border:2px solid var(--phosphor); border-radius:50%; transform:translate(-50%,-50%); box-shadow:0 0 0 1px rgba(0,0,0,0.4), 0 0 8px rgba(127,230,168,0.5); cursor:pointer; transition:transform 0.08s; touch-action:none; -webkit-touch-callout:none; -webkit-user-select:none; user-select:none; }
   /* Invisible touch pad: the visible ring can shrink to 8px for pinhead
      colonies, but a fingertip needs ~40px, so hit-testing uses this larger
      halo. Without it, grabbing a tiny mark usually misses and scrolls the
      page instead. */
-  .marker::after { content:''; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:max(100%,40px); height:max(100%,40px); border-radius:50%; }
-  .marker:hover { border-color:var(--danger); box-shadow:0 0 0 1px rgba(0,0,0,0.4), 0 0 10px rgba(217,113,79,0.7); }
+  .marker::after { content:''; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:max(100%,28px); height:max(100%,28px); border-radius:50%; }
+  /* Hover-to-preview-removal only makes sense with a real pointer (mouse).
+     Touchscreens simulate :hover on tap with no way to "unhover" afterward,
+     so without this guard a tap near a ring leaves it stuck red. */
+  @media (hover:hover) and (pointer:fine) {
+    .marker:hover { border-color:var(--danger); box-shadow:0 0 0 1px rgba(0,0,0,0.4), 0 0 10px rgba(217,113,79,0.7); }
+    .marker.manual:hover { border-color:var(--danger); }
+  }
   .marker.manual { border-color:var(--agar); border-style:solid; }
-  .marker.manual:hover { border-color:var(--danger); }
+  /* Colonies the split stage recovered next to a model detection: drawn
+     dotted so it's obvious which rings came from the hybrid pass when
+     comparing with it on and off. */
+  .marker.split { border-style:dotted; box-shadow:0 0 0 1px rgba(0,0,0,0.4), 0 0 8px rgba(127,230,168,0.35); }
+  /* A newly-added mark starts on a generic default size while its real
+     size is measured in the background (see probeSize); dashed marks the
+     ones still running on that guess, in case low light or an odd shape
+     defeated the measurement and it's worth a manual size check. */
+  .marker.est { border-style:dashed; }
   .readout { background:#0d1a12; border:1px solid var(--phosphor-dim); border-radius:10px; padding:22px 24px; margin-bottom:20px; }
   .readout-label { font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--phosphor); opacity:0.7; text-transform:uppercase; letter-spacing:0.1em; margin-bottom:6px; }
   .readout-count { font-family:'IBM Plex Mono',monospace; font-size:58px; font-weight:500; color:var(--phosphor); line-height:1; text-shadow:0 0 18px rgba(127,230,168,0.35); }
@@ -95,9 +109,12 @@
   </div>
   <div id="workView">
     <h1>Review the count</h1>
-    <p class="sub">Green rings are auto-detected. Select any unmarked colonies to add them to the count; click a ring to remove it.</p>
+    <p class="sub">Green rings are auto-detected. Select any unmarked colonies to add them to the count; tap a ring to remove it.</p>
     <div id="emptyHint" class="flash" style="display:none; background:rgba(201,154,78,0.12); border-color:var(--agar); color:var(--agar);">
-      Auto-detection found nothing to count here. Click each colony to count it manually, or raise the sensitivity and re-run.
+      Auto-detection found nothing to count here. Tap each colony to count it manually, or raise the sensitivity and re-run.
+    </div>
+    <div id="tntcHint" class="flash" style="display:none; background:rgba(217,113,79,0.12); border-color:var(--danger); color:var(--danger);">
+      This plate is above the range where counts are reliable by any method (standard practice is 25 to 250 colonies per plate). Treat the number below as an estimate, report it as too numerous to count, and plate the next dilution.
     </div>
     <div class="bench">
       <div class="stage-wrap"><div id="stage"><img id="plateImg" alt="Plate"></div></div>
@@ -110,10 +127,15 @@
         </div>
         <div class="howto">
           <span class="dot auto"></span> <b>Auto</b> (detected by the app)<br>
+          <span class="dot auto" style="border-style:dotted;"></span> <b>Recovered</b> (split off a touching neighbour)<br>
           <span class="dot manual"></span> <b>Added</b> (placed by you)<br>
-          <div class="note" style="margin-top:10px;">Select unmarked colonies to add them to the count. Click any ring to remove it. Scroll on a ring to resize it (or press and slide up/down on touch).</div>
+          <div class="note" style="margin-top:10px;">Select unmarked colonies to add them to the count. Tap a ring to remove it. Press and slide up/down on a ring (or scroll on it with a mouse) to resize it.</div>
         </div>
         <div class="controls">
+          <label class="note" style="display:flex;align-items:center;gap:8px;margin-bottom:12px;cursor:pointer;">
+            <input type="checkbox" id="hybridChk" style="accent-color:var(--phosphor);">
+            Split merged colonies (looks beside each detection for a touching neighbour the model missed)
+          </label>
           <div class="sens">
             <label>Sensitivity <span class="val" id="sensVal">standard</span></label>
             <input type="range" id="sens" min="0" max="100" step="10" value="50">
@@ -131,7 +153,7 @@
 </main>
 <footer>Auto-count is a starting point. Your clicks are the final count. Validate against manual counts before relying on it.</footer>
 <script>
-const fileInput=document.getElementById('fileInput'),fileInputBrowse=document.getElementById('fileInputBrowse'),browseLink=document.getElementById('browseLink'),dropZone=document.getElementById('dropZone'),uploadView=document.getElementById('uploadView'),workView=document.getElementById('workView'),spinner=document.getElementById('spinner'),flash=document.getElementById('flash'),stage=document.getElementById('stage'),plateImg=document.getElementById('plateImg'),countDisplay=document.getElementById('countDisplay'),autoCountEl=document.getElementById('autoCount'),manualCountEl=document.getElementById('manualCount'),removedCountEl=document.getElementById('removedCount'),sens=document.getElementById('sens'),sensVal=document.getElementById('sensVal'),engineTag=document.getElementById('engineTag'),engineLabel=document.getElementById('engineLabel');
+const fileInput=document.getElementById('fileInput'),fileInputBrowse=document.getElementById('fileInputBrowse'),browseLink=document.getElementById('browseLink'),dropZone=document.getElementById('dropZone'),uploadView=document.getElementById('uploadView'),workView=document.getElementById('workView'),spinner=document.getElementById('spinner'),flash=document.getElementById('flash'),stage=document.getElementById('stage'),plateImg=document.getElementById('plateImg'),countDisplay=document.getElementById('countDisplay'),autoCountEl=document.getElementById('autoCount'),manualCountEl=document.getElementById('manualCount'),removedCountEl=document.getElementById('removedCount'),sens=document.getElementById('sens'),sensVal=document.getElementById('sensVal'),engineTag=document.getElementById('engineTag'),hybridChk=document.getElementById('hybridChk'),engineLabel=document.getElementById('engineLabel');
 let currentFile=null,colonies=[],imgW=0,imgH=0,currentImageData=null;
 fetch('/status').then(r=>r.json()).then(s=>{engineLabel.textContent=s.model_available?'TRAINED MODEL':'CLASSICAL CV';if(s.model_available)engineLabel.classList.add('model');}).catch(()=>{});
 function showFlash(m){flash.textContent=m;flash.style.display='block';}
@@ -145,14 +167,105 @@ browseLink.addEventListener('click',()=>fileInputBrowse.click());
 dropZone.addEventListener('drop',ev=>{ev.preventDefault();if(ev.dataTransfer.files[0]){currentFile=ev.dataTransfer.files[0];analyze(false);}});
 fileInput.addEventListener('change',()=>{if(fileInput.files[0]){currentFile=fileInput.files[0];analyze(false);}});
 fileInputBrowse.addEventListener('change',()=>{if(fileInputBrowse.files[0]){currentFile=fileInputBrowse.files[0];analyze(false);}});
-async function analyze(preserveManual){clearFlash();if(!preserveManual){dropZone.style.display='none';browseLink.style.display='none';spinner.style.display='block';}const fd=new FormData();fd.append('plate_image',currentFile);fd.append('sensitivity',100-sens.value);try{const res=await fetch('/analyze',{method:'POST',body:fd});const data=await res.json();if(!res.ok){showFlash(data.error||'Something went wrong.');dropZone.style.display='flex';browseLink.style.display='block';spinner.style.display='none';return;}imgW=data.width;imgH=data.height;currentImageData=data.image;const autoNew=data.colonies.map(c=>({...c,rx:c.r,ry:c.r,source:'auto',removed:false}));if(preserveManual){const kept=colonies.filter(c=>c.source==='manual'&&!c.removed);colonies=autoNew.concat(kept);}else{colonies=autoNew;}plateImg.src=data.image;plateImg.onload=()=>{renderMarkers();};document.getElementById('emptyHint').style.display=(data.count===0&&colonies.length===0)?'block':'none';engineTag.innerHTML=data.engine==='model'?'engine: <b>trained model</b>':'engine: classical CV';uploadView.style.display='none';workView.style.display='block';spinner.style.display='none';renderMarkers();}catch(err){showFlash('Could not reach the server.');dropZone.style.display='flex';browseLink.style.display='block';spinner.style.display='none';}}
+async function analyze(preserveManual){clearFlash();if(!preserveManual){dropZone.style.display='none';browseLink.style.display='none';spinner.style.display='block';}const fd=new FormData();fd.append('plate_image',currentFile);fd.append('sensitivity',100-sens.value);fd.append('hybrid',hybridChk.checked?'1':'0');try{const res=await fetch('/analyze',{method:'POST',body:fd});const data=await res.json();if(!res.ok){showFlash(data.error||'Something went wrong.');dropZone.style.display='flex';browseLink.style.display='block';spinner.style.display='none';return;}imgW=data.width;imgH=data.height;currentImageData=data.image;const autoNew=data.colonies.map(c=>({...c,rx:c.r,ry:c.r,source:'auto',stage:c.stage||'model',removed:false,sizeSource:'measured'}));if(preserveManual){const kept=colonies.filter(c=>c.source==='manual'&&!c.removed);colonies=autoNew.concat(kept);}else{colonies=autoNew;}plateImg.src=data.image;plateImg.onload=()=>{renderMarkers();};document.getElementById('emptyHint').style.display=(data.count===0&&colonies.length===0)?'block':'none';engineTag.innerHTML=data.engine==='model'?('engine: <b>trained model</b>'+(data.imgsz&&data.imgsz>640?' · hi-res pass':'')+(data.split_added?(' · split recovered <b>'+data.split_added+'</b>'):'')):'engine: classical CV';document.getElementById('tntcHint').style.display=data.tntc?'block':'none';uploadView.style.display='none';workView.style.display='block';spinner.style.display='none';renderMarkers();}catch(err){showFlash('Could not reach the server.');dropZone.style.display='flex';browseLink.style.display='block';spinner.style.display='none';}}
 let suppressNextClick=false;
-function clampR(r){const maxR=Math.max(imgW,imgH)*0.15;return Math.min(Math.max(r,1.5),maxR);}
+// -webkit-touch-callout:none is inconsistent across iOS versions for
+// suppressing the native long-press "Save/Copy/Open Image" menu; this
+// contextmenu-level block is the reliable belt-and-suspenders fix, and
+// it's what actually matters on Android too (which never honored the
+// WebKit-only CSS property in the first place).
+stage.addEventListener('contextmenu',ev=>ev.preventDefault());
+// When auto-fit can't measure a new mark, fall back to the median size of
+// this plate's already-known-good colonies rather than a generic formula -
+// colonies on one plate are usually similar in size, so even an unmeasured
+// guess lands close instead of wildly off (a fixed 1.5%-of-image-edge
+// formula can be several times too big or small depending on the plate).
+function defaultRadius(){
+  const known=colonies.filter(c=>!c.removed&&c.sizeSource==='measured').map(c=>c.rx).sort((a,b)=>a-b);
+  if(known.length){
+    const mid=known.length>>1;
+    return known.length%2?known[mid]:(known[mid-1]+known[mid])/2;
+  }
+  return Math.max(0.015*Math.max(imgW,imgH),8);
+}
+function addMarkAt(clientX,clientY){
+  const rect=plateImg.getBoundingClientRect();const sx=imgW/rect.width,sy=imgH/rect.height;
+  const x=(clientX-rect.left)*sx,y=(clientY-rect.top)*sy;
+  const r0=defaultRadius();
+  const idx=colonies.length;
+  colonies.push({x,y,rx:r0,ry:r0,source:'manual',removed:false,sizeSource:'default',manuallySized:false});
+  renderMarkers();
+  probeSize(idx,x,y);
+}
+// Placing a mark shouldn't wait on a network round-trip to feel done, so it
+// appears instantly at the default size and this fills in the real,
+// measured size shortly after - upgrading the same mark in place rather
+// than blocking the tap. Skipped if the mark's since been removed or the
+// user already resized it themselves (a manual size always wins).
+async function probeSize(idx,x,y){
+  const win=Math.max(1,Math.min(Math.round(Math.min(Math.max(0.12*Math.max(imgW,imgH),120),320)),imgW,imgH));
+  let cx0=Math.round(x-win/2),cy0=Math.round(y-win/2);
+  cx0=Math.max(0,Math.min(cx0,imgW-win));cy0=Math.max(0,Math.min(cy0,imgH-win));
+  const canvas=document.createElement('canvas');canvas.width=win;canvas.height=win;
+  canvas.getContext('2d').drawImage(plateImg,cx0,cy0,win,win,0,0,win,win);
+  try{
+    const res=await fetch('/probe_colony_size',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:canvas.toDataURL('image/jpeg',0.85),px:x-cx0,py:y-cy0})});
+    const d=await res.json();
+    const c=colonies[idx];
+    if(d.ok&&c&&!c.removed&&!c.manuallySized){
+      c.rx=d.r;c.ry=d.r;c.sizeSource='measured';
+      renderMarkers();
+    }
+  }catch(e){}
+}
+// A tap on empty agar used to rely on the browser's synthetic "click" event
+// firing after pointerup. That works for a plain tap, but a drag that moves
+// far enough (e.g. nudging a mark's position before lifting the finger) can
+// make the browser either drop the synthetic click entirely (no mark
+// appears) or resolve its coordinates inconsistently (mark lands off
+// target). Tracking the pointer ourselves and using the exact pointerup
+// position - the same approach attachResize already uses for dragging -
+// fixes both. resizeConsumedId is how attachResize below tells this "the
+// same gesture was already a deliberate press-and-slide resize, don't also
+// add a mark".
+let bgTapId=null,resizeConsumedId=null;
+stage.addEventListener('pointerdown',ev=>{bgTapId=(ev.target===plateImg||ev.target===stage)?ev.pointerId:null;});
+stage.addEventListener('pointerup',ev=>{
+  const wasResize=(resizeConsumedId===ev.pointerId);
+  resizeConsumedId=null;
+  if(bgTapId===ev.pointerId&&!wasResize)addMarkAt(ev.clientX,ev.clientY);
+  bgTapId=null;
+});
+stage.addEventListener('pointercancel',()=>{bgTapId=null;});
+// See the same change in labeller/templates/label.html: 0.15 was too tight
+// for a real single large spreading colony/spot plate that fills much of
+// the frame; 0.45 leaves room for that while still catching a fat-fingered
+// scroll on an ordinary small colony well before it swallows neighbours.
+function clampR(r){const maxR=Math.max(imgW,imgH)*0.45;return Math.min(Math.max(r,1.5),maxR);}
+// Marks' invisible touch pads overlap on dense plates. Instead of trusting
+// whichever pad happens to be topmost in DOM order at a point, find every
+// overlapping mark there and pick the one whose actual center is closest -
+// this is what a user expects "which colony did I just touch" to mean.
+function nearestMarkerAtPoint(clientX,clientY){
+  const list=document.elementsFromPoint?document.elementsFromPoint(clientX,clientY):[document.elementFromPoint(clientX,clientY)];
+  const els=list.filter(el=>el&&el.classList&&el.classList.contains('marker'));
+  if(els.length===0)return null;
+  let best=null,bestDist=Infinity;
+  els.forEach(el=>{
+    const r=el.getBoundingClientRect();
+    const cx=r.left+r.width/2,cy=r.top+r.height/2;
+    const d=Math.hypot(clientX-cx,clientY-cy);
+    if(d<bestDist){bestDist=d;best=el;}
+  });
+  return best;
+}
 function attachResize(el,idx){
-  let dragging=false,moved=false,startX=0,startY=0,initialR=0;
+  let dragging=false,moved=false,startX=0,startY=0,initialR=0,activeEl=el,activeIdx=idx;
   el.addEventListener('pointerdown',ev=>{
-    try{el.setPointerCapture(ev.pointerId);}catch(e){}
-    dragging=true;moved=false;startX=ev.clientX;startY=ev.clientY;initialR=colonies[idx].rx;
+    activeEl=nearestMarkerAtPoint(ev.clientX,ev.clientY)||el;
+    activeIdx=parseInt(activeEl.dataset.idx,10);
+    try{activeEl.setPointerCapture(ev.pointerId);}catch(e){}
+    dragging=true;moved=false;startX=ev.clientX;startY=ev.clientY;initialR=colonies[activeIdx].rx;
   });
   el.addEventListener('pointermove',ev=>{
     if(!dragging)return;
@@ -160,25 +273,26 @@ function attachResize(el,idx){
     if(!moved&&Math.hypot(dx,dy)<6)return;
     moved=true;
     const r=clampR(initialR*Math.pow(2,-dy/100));
-    colonies[idx].rx=r;colonies[idx].ry=r;
+    colonies[activeIdx].rx=r;colonies[activeIdx].ry=r;
+    colonies[activeIdx].manuallySized=true;colonies[activeIdx].sizeSource='measured';
     const rect=plateImg.getBoundingClientRect();const sx=rect.width/imgW,sy=rect.height/imgH;
-    el.style.width=Math.max(r*2*sx,8)+'px';
-    el.style.height=Math.max(r*2*sy,8)+'px';
+    activeEl.style.width=Math.max(r*2*sx,8)+'px';
+    activeEl.style.height=Math.max(r*2*sy,8)+'px';
     ev.preventDefault();
   });
-  const end=()=>{if(!dragging)return;dragging=false;if(moved){suppressNextClick=true;updateCount();}};
+  const end=ev=>{if(!dragging)return;dragging=false;if(moved){suppressNextClick=true;resizeConsumedId=ev.pointerId;updateCount();}};
   el.addEventListener('pointerup',end);
   el.addEventListener('pointercancel',end);
-  el.addEventListener('wheel',ev=>{ev.preventDefault();ev.stopPropagation();const c=colonies[idx];const f=ev.deltaY<0?1.1:0.9;c.rx=clampR(c.rx*f);c.ry=clampR(c.ry*f);renderMarkers();});
+  el.addEventListener('wheel',ev=>{ev.preventDefault();ev.stopPropagation();const c=colonies[idx];const f=ev.deltaY<0?1.1:0.9;c.rx=clampR(c.rx*f);c.ry=clampR(c.ry*f);c.manuallySized=true;c.sizeSource='measured';renderMarkers();});
 }
-function renderMarkers(){stage.querySelectorAll('.marker').forEach(m=>m.remove());const rect=plateImg.getBoundingClientRect();const sx=rect.width/imgW,sy=rect.height/imgH;colonies.forEach((c,i)=>{if(c.removed)return;const el=document.createElement('div');el.className='marker'+(c.source==='manual'?' manual':'');el.dataset.idx=i;const dw=Math.max(c.rx*2*sx,8),dh=Math.max(c.ry*2*sy,8);el.style.left=(c.x*sx)+'px';el.style.top=(c.y*sy)+'px';el.style.width=dw+'px';el.style.height=dh+'px';el.addEventListener('click',ev=>{ev.stopPropagation();if(suppressNextClick){suppressNextClick=false;return;}colonies[i].removed=true;renderMarkers();updateCount();});attachResize(el,i);stage.appendChild(el);});updateCount();}
-stage.addEventListener('click',ev=>{if(ev.target!==plateImg&&ev.target!==stage)return;const rect=plateImg.getBoundingClientRect();const sx=imgW/rect.width,sy=imgH/rect.height;const x=(ev.clientX-rect.left)*sx,y=(ev.clientY-rect.top)*sy;const r0=Math.max(0.015*Math.max(imgW,imgH),8);colonies.push({x,y,rx:r0,ry:r0,source:'manual',removed:false});renderMarkers();});
+function renderMarkers(){stage.querySelectorAll('.marker').forEach(m=>m.remove());const rect=plateImg.getBoundingClientRect();const sx=rect.width/imgW,sy=rect.height/imgH;colonies.forEach((c,i)=>{if(c.removed)return;const el=document.createElement('div');el.className='marker'+(c.source==='manual'?' manual':'')+(c.stage==='split'?' split':'')+(c.sizeSource==='default'?' est':'');el.dataset.idx=i;const dw=Math.max(c.rx*2*sx,8),dh=Math.max(c.ry*2*sy,8);el.style.left=(c.x*sx)+'px';el.style.top=(c.y*sy)+'px';el.style.width=dw+'px';el.style.height=dh+'px';el.addEventListener('click',ev=>{ev.stopPropagation();if(suppressNextClick){suppressNextClick=false;return;}const hit=nearestMarkerAtPoint(ev.clientX,ev.clientY)||el;const hitIdx=parseInt(hit.dataset.idx,10);colonies[hitIdx].removed=true;renderMarkers();updateCount();});attachResize(el,i);stage.appendChild(el);});updateCount();}
 function updateCount(){const auto=colonies.filter(c=>c.source==='auto'&&!c.removed).length;const manual=colonies.filter(c=>c.source==='manual'&&!c.removed).length;const removed=colonies.filter(c=>c.source==='auto'&&c.removed).length;countDisplay.textContent=auto+manual;autoCountEl.textContent=auto;manualCountEl.textContent=manual;removedCountEl.textContent=removed;}
 window.addEventListener('resize',renderMarkers);
 document.getElementById('resetBtn').addEventListener('click',()=>{if(currentFile)analyze(false);});
 sens.addEventListener('change',()=>{if(currentFile)analyze(true);});
+hybridChk.addEventListener('change',()=>{if(currentFile)analyze(true);});
 document.getElementById('newBtn').addEventListener('click',()=>{uploadView.style.display='block';workView.style.display='none';dropZone.style.display='flex';browseLink.style.display='block';fileInput.value='';fileInputBrowse.value='';colonies=[];currentFile=null;});
-document.getElementById('trainBtn').addEventListener('click',async()=>{if(!currentImageData){return;}const pts=colonies.filter(c=>!c.removed).map(c=>({x:c.x,y:c.y,cls:0,rx:c.rx,ry:c.ry}));const btn=document.getElementById('trainBtn');const orig=btn.textContent;btn.textContent='Saving…';try{const res=await fetch('/save_for_training',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:currentImageData,points:pts,width:imgW,height:imgH})});const d=await res.json();btn.textContent=d.ok?('Saved '+d.saved+' colonies ✓'):'Save failed';}catch(e){btn.textContent='Save failed';}setTimeout(()=>{btn.textContent=orig;},2500);});
+document.getElementById('trainBtn').addEventListener('click',async()=>{if(!currentImageData){return;}const pts=colonies.filter(c=>!c.removed).map(c=>({x:c.x,y:c.y,cls:0,rx:c.rx,ry:c.ry,sizeSource:c.sizeSource||'measured'}));const btn=document.getElementById('trainBtn');const orig=btn.textContent;btn.textContent='Saving…';try{const res=await fetch('/save_for_training',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:currentImageData,points:pts,width:imgW,height:imgH})});const d=await res.json();btn.textContent=d.ok?('Saved '+d.saved+' colonies ✓'):'Save failed';}catch(e){btn.textContent='Save failed';}setTimeout(()=>{btn.textContent=orig;},2500);});
 </script>
 </body>
 </html>

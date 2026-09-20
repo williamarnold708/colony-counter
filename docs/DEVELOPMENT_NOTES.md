@@ -279,5 +279,7 @@ holds because both ran under identical settings.
 **Memory on a 512 MB instance.** One dense plate through the real app peaks
 at about 454 MB at 640 and 521 MB at 1024 for a full-size 12 megapixel phone
 photo, measured on Windows, so approximate. That is over a 512 MB limit.
-Set `INFERENCE_IMGSZ=640` if the host restarts for running out of memory; it
-costs accuracy on dense plates (45 colonies against 169 on that plate).
+If the host restarts for running out of memory, set both `INFERENCE_IMGSZ=640`
+and `DENSE_IMGSZ=640`. Setting only the first leaves dense plates on a second
+pass at 1024, which is where the peak is. It costs accuracy on dense plates
+(45 colonies against 169 on that plate).

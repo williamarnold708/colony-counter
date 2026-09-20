@@ -91,6 +91,11 @@ Put a trained `best.pt` (from the training notebook) at
 `Detection engine: trained model` on startup and uses it. If the file is
 absent it falls back to classical CV, so it always works.
 
+You don't need to do this by hand for a deployed copy: when the file is
+missing, the app downloads the current model (release `model-v2.0`) on
+startup. Set `MODEL_URL` to use a different release, for example
+`model-v1.0` to roll back.
+
 ## Building your own model
 
 1. **Label** — drop plate photos into `labeller/inbox/`, run
@@ -105,12 +110,20 @@ See the READMEs in each folder for detail.
 
 ## How well does it work?
 
-On a first dataset of ~59 mixed brewery plates (gridded and plain, various
-colony types), a YOLO11-nano detector reached **mAP@50 ≈ 0.78**. In practice
-it auto-detects dense gridded plates that classical CV cannot handle at all,
-and the manual-correction step covers its remaining errors (mostly faint
-colonies on sparse plates). Accuracy improves as more plates are labelled and
-the model is retrained.
+The first model, trained on ~59 mixed brewery plates (gridded and plain,
+various colony types), reached **mAP@50 ≈ 0.78**. The current model
+(`model-v2.0`) was trained on 147 labelled plates, 118 for training and 29
+held out, with copy-paste augmentation to synthesise dense clusters. On the
+held-out plates it reached **precision 0.885, recall 0.837 and mAP@50 0.876**.
+The two figures are not directly comparable: the validation sets differ, the
+newer one is small, and a single dense plate makes up 329 of its 897
+colonies. Treat both as indicative.
+
+In practice it auto-detects dense gridded plates that classical CV cannot
+handle at all, and the manual-correction step covers its remaining errors.
+Its main known weakness is confluent growth, where it still places boxes
+inside fused colonies; see Limitations. Accuracy improves as more plates are
+labelled and the model is retrained.
 
 **This is a working prototype, not a validated instrument.** Always confirm
 the count against your own judgement before relying on it, and validate

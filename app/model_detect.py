@@ -19,9 +19,11 @@ from detector import split_merged_blob, pieces_like_anchor
 
 MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                           "model", "best.pt")
+# Default is the v2.0 release (retrained with copy-paste augmentation). To
+# roll back without a code change, set MODEL_URL to the model-v1.0 release.
 MODEL_URL = os.environ.get(
     "MODEL_URL",
-    "https://github.com/williamarnold708/colony-counter/releases/download/model-v1.0/best.pt",
+    "https://github.com/williamarnold708/colony-counter/releases/download/model-v2.0/best.pt",
 )
 
 _model = None

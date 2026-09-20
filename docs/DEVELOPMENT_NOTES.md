@@ -234,3 +234,50 @@ being measured here. A cleaner dense-plate validation set is needed
 before tuning either the resolution or the hybrid stage further; more
 labelled dense plates in training is the higher-leverage fix for the
 remaining undercount.
+
+## Retrain with copy-paste augmentation (model-v2.0)
+
+Dense plates were the weakest category, and the dataset there is the
+thinnest and least consistent. Two changes to the training call, neither
+needing new labelling: `copy_paste=0.3`, which pastes labelled colony crops
+onto other plates to manufacture touching and dense examples, and a longer
+budget (`epochs` 100 to 150, `patience` 25 to 40), since the old values were
+tuned on 59 plates.
+
+Same 147 plates and the same 29-plate validation split as the run before
+it, so the two are directly comparable:
+
+| | Before | With copy-paste |
+|---|---|---|
+| Precision | 0.774 | 0.885 |
+| Recall | 0.716 | 0.837 |
+| mAP@50 | 0.744 | 0.876 |
+| mAP@50-95 | 0.371 | 0.487 |
+
+Early stopping picked epoch 90 of 130 run. The best epoch is chosen on the
+validation set itself, so these figures are somewhat optimistic.
+
+**What it fixed and what it did not.** On a dense cluster of touching
+colonies the new model resolves many more of them individually (244 boxes
+against 145 at the same settings), and the boxes look tighter, not
+duplicated. On a plate that is largely confluent lawn it went the wrong way:
+23 boxes against 16, several now inside the fused mass. Copy-paste taught it
+to carve up dense clusters, and it does not distinguish clusters that are
+separable from growth that is fused. No retrain fixes that, because "how
+many colonies are in this fused blob" is not a well-posed question. The
+fix is to detect confluence and flag it, not to count it. The current
+too-numerous-to-count banner only fires on the total count, so a lawn on an
+otherwise sparse plate is not flagged; a local coverage check is the next
+step.
+
+**Caveat on the live numbers.** The app merges overlapping boxes more
+aggressively (`iou` 0.45) and applies a higher confidence cutoff than the
+comparison script used, so the app reports fewer boxes on the same plate
+(169 against 244 on the dense cluster). The comparison between models
+holds because both ran under identical settings.
+
+**Memory on a 512 MB instance.** One dense plate through the real app peaks
+at about 454 MB at 640 and 521 MB at 1024 for a full-size 12 megapixel phone
+photo, measured on Windows, so approximate. That is over a 512 MB limit.
+Set `INFERENCE_IMGSZ=640` if the host restarts for running out of memory; it
+costs accuracy on dense plates (45 colonies against 169 on that plate).

@@ -56,6 +56,34 @@ Open <http://127.0.0.1:5000>, drop in a plate photo, and correct the
 detection by clicking. Without a trained model it runs on classical CV; add
 one (below) and it uses that automatically.
 
+### Detection resolution and very dense plates
+
+The model runs at its training resolution (1024px) by default, so colonies
+on dense plates are large enough on the network's input to actually be
+seen — a smaller size is faster but measurably undercounts dense plates
+(see `docs/DEVELOPMENT_NOTES.md`). A plate whose count comes back above 250
+— beyond what standard practice treats as reliably countable by any method
+— gets a too-numerous-to-count advisory instead of a bare number; dilute
+and re-plate for a trustworthy count in that case.
+
+### Splitting touching colonies (hybrid mode, opt-in)
+
+On dense plates the model can still box one colony of a touching pair and
+miss the other. A second geometric pass (the MCount idea: cut each blob at
+its concave corners and fit circles to the pieces) can run inside the
+neighbourhood of every detection and add any round, same-coloured
+neighbour the model left out. Recovered colonies are drawn as dotted rings
+so you can see exactly what it contributed.
+
+It is **off by default**: at the 1024 resolution above it no longer finds
+real colonies the model missed on the labelled dataset, only false
+positives, so it made counts worse there (see `docs/DEVELOPMENT_NOTES.md`
+for the numbers and why). Tick **Split merged colonies** on the review
+screen to try it on a specific plate, or set `HYBRID_SPLIT=1` in the
+environment to turn it on globally — it may still help at a lower
+inference resolution or on plates unlike the labelled set, so judge it on
+your own plates rather than the default.
+
 ### Adding a trained model
 
 Put a trained `best.pt` (from the training notebook) at
@@ -78,7 +106,7 @@ See the READMEs in each folder for detail.
 ## How well does it work?
 
 On a first dataset of ~59 mixed brewery plates (gridded and plain, various
-colony types), a YOLOv8-nano detector reached **mAP@50 ≈ 0.78**. In practice
+colony types), a YOLO11-nano detector reached **mAP@50 ≈ 0.78**. In practice
 it auto-detects dense gridded plates that classical CV cannot handle at all,
 and the manual-correction step covers its remaining errors (mostly faint
 colonies on sparse plates). Accuracy improves as more plates are labelled and

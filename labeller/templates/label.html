@@ -18,9 +18,14 @@
   .bar-fill{height:100%;background:var(--phos);width:0%;transition:width 0.3s}
   .layout{display:grid;grid-template-columns:1fr 260px;height:calc(100vh - 57px)}
   .stage-col{padding:20px;overflow:auto;display:flex;align-items:flex-start;justify-content:center}
-  #stage{position:relative;display:inline-block;line-height:0;cursor:crosshair}
+  #stage{position:relative;display:inline-block;line-height:0;cursor:crosshair;transform-origin:0 0}
   #plate{max-width:100%;max-height:calc(100vh - 100px);display:block;user-select:none;-webkit-user-drag:none}
   .pt{position:absolute;width:18px;height:18px;border-radius:50%;border:2px solid var(--phos);transform:translate(-50%,-50%);cursor:pointer;box-shadow:0 0 0 1px rgba(0,0,0,.5)}
+  /* A freshly-clicked mark starts on a generic default size while its real
+     size is measured in the background (see probeSize); dashed marks the
+     ones still running on that guess, in case the auto-measure couldn't
+     confidently find the colony's edge. */
+  .pt.est{border-style:dashed}
   .pt:hover{border-color:var(--danger);background:rgba(217,113,79,.25)}
   .pt.c1{border-color:#5ab4e6}
   .pt.c2{border-color:var(--amber)}
@@ -59,7 +64,7 @@
     <div class="count-box"><div class="count-label">Colonies marked</div><div class="count-num" id="count">0</div></div>
     <div class="fname" id="fname">—</div>
     <div id="clsWrap" style="display:none;"><div class="count-label" style="color:var(--dim);margin-bottom:6px;">Class for new marks</div><div class="cls-row" id="clsRow"></div></div>
-    <div class="help"><b>Click</b> a colony to mark it<br><b>Click a mark</b> to remove it<br><b>Scroll</b> on a mark to resize it to the colony's real size<br><kbd>S</kbd> save &amp; next plate<br><kbd>K</kbd> skip this plate<br><kbd>Z</kbd> undo last mark<br><kbd>C</kbd> clear all marks</div>
+    <div class="help"><b>Click</b> a colony to mark it — its size is measured automatically<br><b>Click a mark</b> to remove it<br><b>Scroll</b> on a mark to resize it by hand (dashed = size wasn't confidently measured)<br><b>Ctrl+Scroll</b> anywhere to zoom the plate<br><kbd>S</kbd> save &amp; next plate<br><kbd>K</kbd> skip this plate<br><kbd>Z</kbd> undo last mark<br><kbd>C</kbd> clear all marks</div>
     <div class="msg" id="msg"></div>
     <div class="spacer"></div>
     <button class="act save" id="saveBtn">Save &amp; next plate</button>
@@ -78,12 +83,79 @@ function msg(t,k){msgEl.textContent=t;msgEl.className='msg '+k;msgEl.style.displ
 async function refreshState(){const r=await fetch('/api/state');const s=await r.json();classes=s.classes||['colony'];progText.textContent=`${s.done} / ${s.total}`;progBar.style.width=(s.total?(s.done/s.total*100):0)+'%';renderClasses();if(!s.next){document.getElementById('main').style.display='none';document.getElementById('doneScreen').style.display='flex';return null;}return s.next;}
 function renderClasses(){if(classes.length<=1){clsWrap.style.display='none';return;}clsWrap.style.display='block';clsRow.innerHTML='';classes.forEach((c,i)=>{const b=document.createElement('button');b.className='cls-btn'+(i===activeCls?' active':'');b.textContent=(i+1)+' '+c;b.onclick=()=>{activeCls=i;renderClasses();};clsRow.appendChild(b);});}
 function defaultR(){return cur?Math.max(0.030*Math.max(cur.width,cur.height)/2,6):10;}
-function clampR(r){const maxR=cur?Math.max(cur.width,cur.height)*0.1:200;return Math.min(Math.max(r,4),maxR);}
-async function loadPlate(name){const r=await fetch('/api/image/'+encodeURIComponent(name));const d=await r.json();if(d.error){msg(d.error,'err');return;}cur={name:d.name,width:d.width,height:d.height};points=(d.points||[]).map(p=>({x:p.x,y:p.y,cls:p.cls||0,r:p.r||defaultR()}));fnameEl.textContent=d.name;plate.src=d.image;plate.onload=()=>render();}
-function render(){stage.querySelectorAll('.pt').forEach(e=>e.remove());const rect=plate.getBoundingClientRect();const sx=rect.width/cur.width,sy=rect.height/cur.height;points.forEach((p,i)=>{const el=document.createElement('div');el.className='pt'+(p.cls?(' c'+p.cls):'');const d=Math.max(p.r*2*sx,10);el.style.width=d+'px';el.style.height=d+'px';el.style.left=(p.x*sx)+'px';el.style.top=(p.y*sy)+'px';el.onclick=(ev)=>{ev.stopPropagation();points.splice(i,1);render();};el.addEventListener('wheel',ev=>{ev.preventDefault();ev.stopPropagation();points[i].r=clampR(p.r*(ev.deltaY<0?1.1:0.9));render();});stage.appendChild(el);});countEl.textContent=points.length;}
-stage.addEventListener('click',ev=>{if(!cur)return;if(ev.target!==plate&&ev.target!==stage)return;const rect=plate.getBoundingClientRect();const x=(ev.clientX-rect.left)*(cur.width/rect.width),y=(ev.clientY-rect.top)*(cur.height/rect.height);points.push({x,y,cls:activeCls,r:defaultR()});render();});
-async function save(){if(!cur)return;const r=await fetch('/api/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:cur.name,points,width:cur.width,height:cur.height})});const d=await r.json();if(d.error){msg(d.error,'err');return;}msg(`Saved ${d.saved} colonies`,'ok');const next=await refreshState();if(next)loadPlate(next);}
-async function skip(){if(!cur)return;await fetch('/api/skip',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:cur.name})});const next=await refreshState();if(next)loadPlate(next);}
+// Floor matches the phone app's own minimum (see "Allow marks to shrink
+// small enough for pinhead colonies") - this used to be a stricter 4px,
+// which would round a genuinely tiny measured colony up to a bigger box
+// than it really is.
+// 0.1 (a fifth of the frame across) was too tight for a real single large
+// spreading colony/spot plate, where the growth can fill much of the dish;
+// 0.45 lets a mark grow to nearly the whole frame while still catching a
+// fat-fingered scroll on an ordinary small colony well before it swallows
+// neighbours.
+function clampR(r){const maxR=cur?Math.max(cur.width,cur.height)*0.45:200;return Math.min(Math.max(r,1.5),maxR);}
+// Plain Ctrl+scroll zooms the whole browser page, which is useless for
+// checking a small/faint colony closely - it scales the sidebar and text
+// right along with the photo. Zooming #stage itself instead (marks are its
+// children, so they scale and stay aligned automatically) and preventing
+// the native page zoom on the same gesture keeps the zoom scoped to the
+// plate. transform-origin is pinned to the top-left so zoomed-in overflow
+// only ever grows right/down, staying reachable via .stage-col's normal
+// scrollbars instead of hiding off the edge.
+let zoom=1;
+function setZoom(z){zoom=Math.min(Math.max(z,1),6);stage.style.transform=zoom===1?'':`scale(${zoom})`;}
+stage.addEventListener('wheel',ev=>{
+  if(!ev.ctrlKey)return;
+  ev.preventDefault();
+  setZoom(zoom*(ev.deltaY<0?1.1:0.9));
+},{passive:false});
+// A crash, an accidental reload, or a browser tab OOM-kill loses whatever's
+// only sitting in this page's memory - and nothing here reaches disk until
+// you press Save. For a plate with hundreds of marks, that's potentially
+// hours of clicking gone with no way to recover it (in-memory JS state
+// doesn't survive a crashed tab, no matter what Chrome's own crash-recovery
+// offers to restore). Mirroring every change into localStorage as it
+// happens, keyed per-plate, means the absolute worst a crash costs is
+// nothing - reloading the same plate finds the draft and restores it.
+function draftKey(name){return 'colony-labeller-draft:'+name;}
+function saveDraft(){if(!cur)return;try{localStorage.setItem(draftKey(cur.name),JSON.stringify(points));}catch(e){}}
+function clearDraft(name){try{localStorage.removeItem(draftKey(name));}catch(e){}}
+async function loadPlate(name){const r=await fetch('/api/image/'+encodeURIComponent(name));const d=await r.json();if(d.error){msg(d.error,'err');return;}cur={name:d.name,width:d.width,height:d.height};points=(d.points||[]).map(p=>({x:p.x,y:p.y,cls:p.cls||0,r:p.r||defaultR(),measured:!!p.r,manuallySized:false}));
+  let draft=null;
+  try{const raw=localStorage.getItem(draftKey(name));if(raw)draft=JSON.parse(raw);}catch(e){}
+  if(Array.isArray(draft)&&draft.length){points=draft;msg(`Restored ${draft.length} unsaved marks from before`,'ok');}
+  fnameEl.textContent=d.name;setZoom(1);plate.src=d.image;plate.onload=()=>render();}
+// Placing a mark shouldn't wait on a network round-trip to feel done, so it
+// appears instantly at the default size and this fills in the real,
+// measured size shortly after - upgrading the same mark in place. Skipped
+// if the mark's since been removed or the user already resized it
+// themselves (a manual size always wins over a late-arriving measurement).
+async function probeSize(idx,x,y){
+  try{
+    const res=await fetch('/api/probe_size',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:cur.name,px:x,py:y})});
+    const d=await res.json();
+    const p=points[idx];
+    if(d.ok&&p&&!p.manuallySized){p.r=clampR(d.r);p.measured=true;render();}
+  }catch(e){}
+}
+function render(){stage.querySelectorAll('.pt').forEach(e=>e.remove());const rect=plate.getBoundingClientRect();
+  // Marks are positioned via left/top in #stage's own local coordinate
+  // space, then the zoom transform scales that whole box (image and marks
+  // together) visually - so the scale factor used to place them has to be
+  // in that same local (pre-transform) space too. getBoundingClientRect()
+  // reports the already-zoomed size, so divide zoom back out first; using
+  // it directly would double-apply the zoom and make marks drift off the
+  // real colony as soon as you zoom in.
+  // The same applies to the on-screen minimum ring size: an 8px floor set
+  // here (in local space) would itself get multiplied by zoom on render,
+  // becoming a 48px floor at 6x zoom instead of staying 8px - which is
+  // exactly why zooming in didn't actually let a tiny mark shrink any
+  // closer to the real colony before. Dividing the floor by zoom keeps it
+  // a genuine constant 8 screen px at any zoom level, so zooming in enough
+  // eventually lets a mark's real proportional size overtake the floor.
+  const sx=(rect.width/zoom)/cur.width,sy=(rect.height/zoom)/cur.height;points.forEach((p,i)=>{const el=document.createElement('div');el.className='pt'+(p.cls?(' c'+p.cls):'')+(!p.measured?' est':'');const d=Math.max(p.r*2*sx,8/zoom);el.style.width=d+'px';el.style.height=d+'px';el.style.left=(p.x*sx)+'px';el.style.top=(p.y*sy)+'px';el.onclick=(ev)=>{ev.stopPropagation();points.splice(i,1);render();};el.addEventListener('wheel',ev=>{if(ev.ctrlKey)return;ev.preventDefault();ev.stopPropagation();points[i].r=clampR(p.r*(ev.deltaY<0?1.1:0.9));points[i].manuallySized=true;points[i].measured=true;render();});stage.appendChild(el);});countEl.textContent=points.length;saveDraft();}
+stage.addEventListener('click',ev=>{if(!cur)return;if(ev.target!==plate&&ev.target!==stage)return;const rect=plate.getBoundingClientRect();const x=(ev.clientX-rect.left)*(cur.width/rect.width),y=(ev.clientY-rect.top)*(cur.height/rect.height);const idx=points.length;points.push({x,y,cls:activeCls,r:defaultR(),measured:false,manuallySized:false});render();probeSize(idx,x,y);});
+async function save(){if(!cur)return;const name=cur.name;const r=await fetch('/api/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,points,width:cur.width,height:cur.height})});const d=await r.json();if(d.error){msg(d.error,'err');return;}clearDraft(name);msg(`Saved ${d.saved} colonies`,'ok');const next=await refreshState();if(next)loadPlate(next);}
+async function skip(){if(!cur)return;const name=cur.name;await fetch('/api/skip',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});clearDraft(name);const next=await refreshState();if(next)loadPlate(next);}
 document.getElementById('saveBtn').onclick=save;document.getElementById('skipBtn').onclick=skip;document.getElementById('clearBtn').onclick=()=>{points=[];render();};
 document.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;const k=e.key.toLowerCase();if(k==='s'){e.preventDefault();save();}else if(k==='k'){e.preventDefault();skip();}else if(k==='z'){e.preventDefault();points.pop();render();}else if(k==='c'){e.preventDefault();points=[];render();}else if(/^[1-9]$/.test(k)){const i=parseInt(k)-1;if(i<classes.length){activeCls=i;renderClasses();}}});
 window.addEventListener('resize',()=>{if(cur)render();});

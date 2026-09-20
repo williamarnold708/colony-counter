@@ -21,10 +21,15 @@ from flask import Flask, request, jsonify, render_template
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "app"))
 try:
-    from detector import detect_colonies
+    from detector import detect_colonies, probe_colony_size
     HAVE_DETECTOR = True
 except Exception:
     HAVE_DETECTOR = False
+try:
+    import model_detect
+    HAVE_MODEL_MODULE = True
+except Exception:
+    HAVE_MODEL_MODULE = False
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(BASE, "data")
@@ -41,6 +46,11 @@ for d in (IMAGES, LABELS, INBOX):
     os.makedirs(d, exist_ok=True)
 
 app = Flask(__name__)
+
+# Load (downloading if needed) at startup rather than on the first prefill
+# request, same as the counter app does.
+if HAVE_MODEL_MODULE:
+    model_detect.ensure_model_ready()
 
 
 def load_classes():
@@ -112,16 +122,28 @@ def get_image(name):
     h, w = work.shape[:2]
 
     points = []
-    if HAVE_DETECTOR and request.args.get("prefill", "1") == "1":
+    if request.args.get("prefill", "1") == "1":
+        # The trained model is what was actually built to handle the hard
+        # cases (dense, gridded plates) that trip up the classical
+        # threshold-and-watershed detector - prefilling with classical CV
+        # alone meant exactly those hardest plates got zero prefill and had
+        # to be labelled entirely by hand. Prefer the model whenever it's
+        # available, same priority order the counter app already uses, and
+        # only fall back to classical CV if the model can't be loaded.
+        res = None
         try:
-            res = detect_colonies(img)
+            if HAVE_MODEL_MODULE and model_detect.is_available():
+                res = model_detect.detect_colonies_model(img)
+            elif HAVE_DETECTOR:
+                res = detect_colonies(img)
+        except Exception:
+            res = None
+        if res:
             sx = w / res["width"]
             sy = h / res["height"]
             for c in res["colonies"]:
                 points.append({"x": c["x"] * sx, "y": c["y"] * sy, "cls": 0,
                                "r": c["r"] * sx})
-        except Exception:
-            points = []
 
     stem = os.path.splitext(name)[0]
     label_path = os.path.join(LABELS, stem + ".txt")
@@ -141,6 +163,44 @@ def get_image(name):
     b64 = base64.b64encode(buf).decode("ascii")
     return jsonify({"name": name, "image": "data:image/jpeg;base64," + b64,
                     "width": w, "height": h, "points": points})
+
+
+@app.route("/api/probe_size", methods=["POST"])
+def probe_size():
+    """
+    Measure the real size of the colony under a just-placed mark, the same
+    way the phone app's auto-fit-on-tap does, so a click sizes itself
+    instead of needing a manual scroll-to-fit. (px, py) are in the same
+    work-image coordinate space /api/image/<name> already returned, so this
+    re-derives that exact same resized image rather than trusting a
+    separately-sent crop.
+    """
+    if not HAVE_DETECTOR:
+        return jsonify({"ok": False}), 200
+    data = request.get_json(force=True)
+    name = data.get("name")
+    px, py = data.get("px"), data.get("py")
+    if not name or px is None or py is None:
+        return jsonify({"ok": False}), 400
+    path = os.path.join(INBOX, name)
+    if not os.path.exists(path):
+        return jsonify({"ok": False}), 404
+    img = cv2.imread(path)
+    if img is None:
+        return jsonify({"ok": False}), 400
+
+    long_edge = max(img.shape[:2])
+    scale = 1400 / long_edge if long_edge > 1400 else 1.0
+    work = cv2.resize(img, None, fx=scale, fy=scale,
+                      interpolation=cv2.INTER_AREA) if scale != 1.0 else img
+    h, w = work.shape[:2]
+
+    win = max(1, min(round(min(max(0.12 * max(w, h), 120), 320)), w, h))
+    x0 = max(0, min(round(px - win / 2), w - win))
+    y0 = max(0, min(round(py - win / 2), h - win))
+    crop = work[y0:y0 + win, x0:x0 + win]
+
+    return jsonify(probe_colony_size(crop, px - x0, py - y0))
 
 
 @app.route("/api/save", methods=["POST"])
@@ -208,7 +268,12 @@ def set_classes():
 
 
 if __name__ == "__main__":
+    prefill_engine = "OFF"
+    if HAVE_MODEL_MODULE and model_detect.is_available():
+        prefill_engine = "trained model"
+    elif HAVE_DETECTOR:
+        prefill_engine = "classical CV"
     print(f"Inbox:   {INBOX}")
     print(f"Dataset: {DATA}")
-    print(f"Auto-detect prefill: {'on' if HAVE_DETECTOR else 'OFF'}")
+    print(f"Prefill engine: {prefill_engine}")
     app.run(debug=True, host="0.0.0.0", port=5001)

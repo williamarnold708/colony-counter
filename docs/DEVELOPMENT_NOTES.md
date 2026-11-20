@@ -283,3 +283,79 @@ If the host restarts for running out of memory, set both `INFERENCE_IMGSZ=640`
 and `DENSE_IMGSZ=640`. Setting only the first leaves dense plates on a second
 pass at 1024, which is where the peak is. It costs accuracy on dense plates
 (45 colonies against 169 on that plate).
+
+## Fine-tune on reviewed Render plates (model-v2.1, November 2026)
+
+The new model finds 69% of colonies on held-out new plates at the app's
+default setting, against 43% for v2.0, and 92% against 83% on held-out older
+plates.
+
+**Data.** 189 plates saved to the hosted app were exported on 2026-11-10 and
+de-duplicated to 142, none overlapping the 147-plate v2.0 set. Each was
+reviewed in the labeller: 112 kept and 30 skipped (too numerous to count,
+confluent, or clouds of dots too small to mark every one). Partial labels
+were not allowed, because a half-labelled plate teaches the model to miss
+colonies. Review grew the saved labels on the kept plates from 4,774 to 6,651
+colonies.
+
+**Split.** Training used 90 new plates plus 40 older plates as a reminder set,
+so the model does not forget the plates it already knew. Held out: 22 new
+plates (every fifth by colony count, so sparse and dense are both tested) and
+20 older plates.
+
+**Training** (`training/colony_finetune.ipynb`, Colab T4, about 4 minutes):
+start from v2.0, `freeze=10`, AdamW at `lr0=0.0005`, 40 epochs, `patience=15`,
+`copy_paste=0.3`, `imgsz=1024`, `max_det=3000`. The best epoch is picked on
+new and older held-out plates together. The combined held-out mAP50 went from
+0.58 after the first epoch to about 0.75, flat from epoch 29.
+
+**Results** on the held-out plates, through the app's own pipeline
+(`model_detect`, hybrid off). "Found" = labelled colonies matched by a mark;
+"extra" = marks with no label under them.
+
+| Setting | Plates | v2.0 found | v2.1 found | v2.0 extra | v2.1 extra |
+| --- | --- | --- | --- | --- | --- |
+| App default (conf 0.325) | 22 new, 1,047 colonies | 43% | 69% | 11 | 25 |
+| App default (conf 0.325) | 20 older, 455 colonies | 83% | 92% | 9 | 37 |
+| One notch more sensitive (conf 0.25) | 22 new | 47% | 78% | 15 | 47 |
+| One notch more sensitive (conf 0.25) | 20 older | 87% | 94% | 20 | 67 |
+
+Of the 67 extras on older plates at 0.25, 38 are on one plate whose older
+labels mark only some of its small white dots. The rest are on dish rims,
+the bench outside the dish, marker writing, and a near-empty plate.
+
+**Still weak:** small dark colonies on crowded gridded plates (one held-out
+plate: 135 of 207 found at 0.25). The weights are not in git; v2.1 still
+needs a release asset, and the hosted app still runs model-v1.0 until the
+hosting plan is upgraded.
+
+## Dish-edge filter
+
+The filter removes model marks that sit clearly outside the petri dish
+(`app/dish_edge.py`, on by default, `DISH_FILTER=0` turns it off). It is
+safe but small: on all 259 labelled plates it removed 11 false marks and
+lost no real colony.
+
+**Method.** Hough circles on a 640 px copy. A candidate needs a visible edge
+along at least 30% of its in-frame outline, and may leave out no more than
+3 of the model's marks (or 1% on a crowded plate). The largest candidate
+that passes is the dish. Marks more than 4% of the radius beyond it are
+dropped; marks on the rim are kept. When no circle passes, nothing is
+removed.
+
+**Test** (v2.1 at conf 0.25, where stray marks are most common): 11 marks
+removed, all with no label under them, and 0 labelled colonies outside any
+circle the filter chose. The model makes 744 unlabelled marks across those
+plates, almost all inside the dish, so the filter only touches a small share.
+At the default setting it removed 1 mark on the 42 held-out plates.
+
+**Rejected variants** (all lost real colonies):
+- **Strongest circle instead of largest.** On crowded plates it cut through
+  the agar: 22 real colonies lost, still 8 after tightening.
+- **Concentric inner circle (the agar edge).** 3 lost. The inner circle is
+  often the edge of the gridded membrane, and colonies grow outside it.
+- **Low-confidence marks near the rim.** Every setting lost colonies:
+  6 labelled colonies sit beyond 95% of the dish radius.
+
+Marks on the dish wall therefore need more training examples (plates on a
+shiny bench with the wall in view), not a geometric rule.

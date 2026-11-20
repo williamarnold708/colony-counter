@@ -30,6 +30,11 @@ try:
     HAVE_MODEL_MODULE = True
 except Exception:
     HAVE_MODEL_MODULE = False
+try:
+    import preplace
+    HAVE_PREPLACE = True
+except Exception:
+    HAVE_PREPLACE = False
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(BASE, "data")
@@ -201,6 +206,34 @@ def probe_size():
     crop = work[y0:y0 + win, x0:x0 + win]
 
     return jsonify(probe_colony_size(crop, px - x0, py - y0))
+
+
+@app.route("/api/preplace", methods=["POST"])
+def preplace_route():
+    """
+    Propose marks for every colony that looks like the ones already marked on
+    this plate (see preplace.py). The page sends its current marks as the
+    examples to learn from and adds what comes back as dotted proposals.
+    """
+    if not HAVE_PREPLACE:
+        return jsonify({"ok": False, "error": "Pre-place isn't available"})
+    data = request.get_json(force=True)
+    name = data.get("name")
+    marks = data.get("marks", [])
+    if not name:
+        return jsonify({"ok": False, "error": "Bad pre-place request"}), 400
+    path = os.path.join(INBOX, name)
+    img = cv2.imread(path) if os.path.exists(path) else None
+    if img is None:
+        return jsonify({"ok": False, "error": "Image not found"}), 404
+    long_edge = max(img.shape[:2])
+    scale = 1400 / long_edge if long_edge > 1400 else 1.0
+    work = cv2.resize(img, None, fx=scale, fy=scale,
+                      interpolation=cv2.INTER_AREA) if scale != 1.0 else img
+    examples = [(float(m["x"]), float(m["y"]), float(m.get("r") or 0)) for m in marks]
+    sized = [bool(m.get("sized", True)) for m in marks]
+    proposals, info = preplace.propose_colonies(work, examples, sized=sized)
+    return jsonify({"ok": True, "marks": proposals, "info": info})
 
 
 @app.route("/api/save", methods=["POST"])

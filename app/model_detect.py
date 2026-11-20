@@ -16,6 +16,7 @@ import urllib.request
 import numpy as np
 
 from detector import split_merged_blob, pieces_like_anchor
+import dish_edge
 
 MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                           "model", "best.pt")
@@ -141,6 +142,9 @@ MAX_DET = 3000
 # reliable by any method (standard practice is 25-250 per plate); the UI
 # shows a too-numerous-to-count advisory.
 TNTC_COUNT = 250
+# Drop marks clearly outside the petri dish (on the bench, lid or dish wall).
+# On by default; DISH_FILTER=0 turns it off. See dish_edge.py.
+DISH_FILTER_DEFAULT = os.environ.get("DISH_FILTER", "1") not in ("0", "false", "off")
 
 
 def raw_detections(work_bgr, conf=0.25, imgsz=None):
@@ -237,11 +241,13 @@ def hybrid_split(work_bgr, dets, r_min=SPLIT_R_MIN, r_max=SPLIT_R_MAX,
     return colonies + added, len(added)
 
 
-def detect_colonies_model(image_bgr, conf=0.25, hybrid=None):
+def detect_colonies_model(image_bgr, conf=0.25, hybrid=None, dish_filter=None):
     import cv2
 
     if hybrid is None:
         hybrid = HYBRID_SPLIT_DEFAULT
+    if dish_filter is None:
+        dish_filter = DISH_FILTER_DEFAULT
 
     h0, w0 = image_bgr.shape[:2]
     long_edge = max(h0, w0)
@@ -265,6 +271,11 @@ def detect_colonies_model(image_bgr, conf=0.25, hybrid=None):
     # stage on, a split piece that lands on a neighbouring box).
     colonies = _dedupe(colonies)
 
+    # Last: drop marks clearly outside the dish. Finds nothing and removes
+    # nothing when it cannot see the dish edge with confidence.
+    dish = dish_edge.find_dish(work, colonies) if dish_filter else None
+    colonies, off_dish = dish_edge.drop_outside(colonies, dish)
+
     return {
         "colonies": colonies,
         "count": len(colonies),
@@ -273,6 +284,8 @@ def detect_colonies_model(image_bgr, conf=0.25, hybrid=None):
         "mode": "model",
         "dish_found": True,
         "split_added": added,
+        "dish_removed": len(off_dish),
+        "dish": [round(v, 1) for v in dish] if dish else None,
         "imgsz": imgsz_used,
         "tntc": len(colonies) > TNTC_COUNT,
     }

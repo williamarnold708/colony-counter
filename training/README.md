@@ -22,3 +22,11 @@ training finishes.
 - Uses YOLOv8/11-nano: fast, resists overfitting on small datasets.
 - A fixed random seed makes runs reproducible.
 - Retrain any time with more labelled plates; just replace `app/model/best.pt`.
+
+## Fine-tuning an existing model
+
+`colony_finetune.ipynb` improves the current model with newly reviewed plates
+instead of training from scratch. It starts from `app/model/best.pt`, mixes in
+some older plates so the model does not forget them, and prints a before/after
+table on held-out plates. See the notebook's first cell for the zip layout,
+and `docs/DEVELOPMENT_NOTES.md` for the November 2026 run (model-v2.1).

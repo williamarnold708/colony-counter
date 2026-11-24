@@ -55,11 +55,6 @@
      dotted so it's obvious which rings came from the hybrid pass when
      comparing with it on and off. */
   .marker.split { border-style:dotted; box-shadow:0 0 0 1px rgba(0,0,0,0.4), 0 0 8px rgba(127,230,168,0.35); }
-  /* A newly-added mark starts on a generic default size while its real
-     size is measured in the background (see probeSize); dashed marks the
-     ones still running on that guess, in case low light or an odd shape
-     defeated the measurement and it's worth a manual size check. */
-  .marker.est { border-style:dashed; }
   .readout { background:#0d1a12; border:1px solid var(--phosphor-dim); border-radius:10px; padding:22px 24px; margin-bottom:20px; }
   .readout-label { font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--phosphor); opacity:0.7; text-transform:uppercase; letter-spacing:0.1em; margin-bottom:6px; }
   .readout-count { font-family:'IBM Plex Mono',monospace; font-size:58px; font-weight:500; color:var(--phosphor); line-height:1; text-shadow:0 0 18px rgba(127,230,168,0.35); }
@@ -175,48 +170,18 @@ let suppressNextClick=false;
 // it's what actually matters on Android too (which never honored the
 // WebKit-only CSS property in the first place).
 stage.addEventListener('contextmenu',ev=>ev.preventDefault());
-// When auto-fit can't measure a new mark, fall back to the median size of
-// this plate's already-known-good colonies rather than a generic formula -
-// colonies on one plate are usually similar in size, so even an unmeasured
-// guess lands close instead of wildly off (a fixed 1.5%-of-image-edge
-// formula can be several times too big or small depending on the plate).
-function defaultRadius(){
-  const known=colonies.filter(c=>!c.removed&&c.sizeSource==='measured').map(c=>c.rx).sort((a,b)=>a-b);
-  if(known.length){
-    const mid=known.length>>1;
-    return known.length%2?known[mid]:(known[mid-1]+known[mid])/2;
-  }
-  return Math.max(0.015*Math.max(imgW,imgH),8);
-}
+// A hand-added mark is a small fixed ring (8 px radius on the plate photo)
+// that stays exactly where and how it was placed. Auto-sizing it from the
+// image made the ring appear at one size and then jump to another, which
+// felt unsteady to use. The ring can still be resized by hand. It's saved
+// with sizeSource 'default' (unless resized), so a training run can find
+// and re-measure these marks later from the .sizesrc.json files.
+const MANUAL_RADIUS=8;
 function addMarkAt(clientX,clientY){
   const rect=plateImg.getBoundingClientRect();const sx=imgW/rect.width,sy=imgH/rect.height;
   const x=(clientX-rect.left)*sx,y=(clientY-rect.top)*sy;
-  const r0=defaultRadius();
-  const idx=colonies.length;
-  colonies.push({x,y,rx:r0,ry:r0,source:'manual',removed:false,sizeSource:'default',manuallySized:false});
+  colonies.push({x,y,rx:MANUAL_RADIUS,ry:MANUAL_RADIUS,source:'manual',removed:false,sizeSource:'default',manuallySized:false});
   renderMarkers();
-  probeSize(idx,x,y);
-}
-// Placing a mark shouldn't wait on a network round-trip to feel done, so it
-// appears instantly at the default size and this fills in the real,
-// measured size shortly after - upgrading the same mark in place rather
-// than blocking the tap. Skipped if the mark's since been removed or the
-// user already resized it themselves (a manual size always wins).
-async function probeSize(idx,x,y){
-  const win=Math.max(1,Math.min(Math.round(Math.min(Math.max(0.12*Math.max(imgW,imgH),120),320)),imgW,imgH));
-  let cx0=Math.round(x-win/2),cy0=Math.round(y-win/2);
-  cx0=Math.max(0,Math.min(cx0,imgW-win));cy0=Math.max(0,Math.min(cy0,imgH-win));
-  const canvas=document.createElement('canvas');canvas.width=win;canvas.height=win;
-  canvas.getContext('2d').drawImage(plateImg,cx0,cy0,win,win,0,0,win,win);
-  try{
-    const res=await fetch('/probe_colony_size',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:canvas.toDataURL('image/jpeg',0.85),px:x-cx0,py:y-cy0})});
-    const d=await res.json();
-    const c=colonies[idx];
-    if(d.ok&&c&&!c.removed&&!c.manuallySized){
-      c.rx=d.r;c.ry=d.r;c.sizeSource='measured';
-      renderMarkers();
-    }
-  }catch(e){}
 }
 // A tap on empty agar used to rely on the browser's synthetic "click" event
 // firing after pointerup. That works for a plain tap, but a drag that moves
@@ -228,12 +193,18 @@ async function probeSize(idx,x,y){
 // fixes both. resizeConsumedId is how attachResize below tells this "the
 // same gesture was already a deliberate press-and-slide resize, don't also
 // add a mark".
-let bgTapId=null,resizeConsumedId=null;
-stage.addEventListener('pointerdown',ev=>{bgTapId=(ev.target===plateImg||ev.target===stage)?ev.pointerId:null;});
+// addedThisGesture: on a touchscreen the browser sends its "click" for a tap
+// AFTER pointerup, and hit-tests it again - by then the mark just added sits
+// right under the finger, so that click landed on the new ring and removed
+// it at once (only a long press, which sends no click, kept the mark). A
+// click that arrives before the next pointerdown belongs to the tap that
+// already added the mark, so the ring's click handler ignores it.
+let bgTapId=null,resizeConsumedId=null,addedThisGesture=false;
+stage.addEventListener('pointerdown',ev=>{addedThisGesture=false;bgTapId=(ev.target===plateImg||ev.target===stage)?ev.pointerId:null;});
 stage.addEventListener('pointerup',ev=>{
   const wasResize=(resizeConsumedId===ev.pointerId);
   resizeConsumedId=null;
-  if(bgTapId===ev.pointerId&&!wasResize)addMarkAt(ev.clientX,ev.clientY);
+  if(bgTapId===ev.pointerId&&!wasResize){addMarkAt(ev.clientX,ev.clientY);addedThisGesture=true;}
   bgTapId=null;
 });
 stage.addEventListener('pointercancel',()=>{bgTapId=null;});
@@ -285,7 +256,7 @@ function attachResize(el,idx){
   el.addEventListener('pointercancel',end);
   el.addEventListener('wheel',ev=>{ev.preventDefault();ev.stopPropagation();const c=colonies[idx];const f=ev.deltaY<0?1.1:0.9;c.rx=clampR(c.rx*f);c.ry=clampR(c.ry*f);c.manuallySized=true;c.sizeSource='measured';renderMarkers();});
 }
-function renderMarkers(){stage.querySelectorAll('.marker').forEach(m=>m.remove());const rect=plateImg.getBoundingClientRect();const sx=rect.width/imgW,sy=rect.height/imgH;colonies.forEach((c,i)=>{if(c.removed)return;const el=document.createElement('div');el.className='marker'+(c.source==='manual'?' manual':'')+(c.stage==='split'?' split':'')+(c.sizeSource==='default'?' est':'');el.dataset.idx=i;const dw=Math.max(c.rx*2*sx,8),dh=Math.max(c.ry*2*sy,8);el.style.left=(c.x*sx)+'px';el.style.top=(c.y*sy)+'px';el.style.width=dw+'px';el.style.height=dh+'px';el.addEventListener('click',ev=>{ev.stopPropagation();if(suppressNextClick){suppressNextClick=false;return;}const hit=nearestMarkerAtPoint(ev.clientX,ev.clientY)||el;const hitIdx=parseInt(hit.dataset.idx,10);colonies[hitIdx].removed=true;renderMarkers();updateCount();});attachResize(el,i);stage.appendChild(el);});updateCount();}
+function renderMarkers(){stage.querySelectorAll('.marker').forEach(m=>m.remove());const rect=plateImg.getBoundingClientRect();const sx=rect.width/imgW,sy=rect.height/imgH;colonies.forEach((c,i)=>{if(c.removed)return;const el=document.createElement('div');el.className='marker'+(c.source==='manual'?' manual':'')+(c.stage==='split'?' split':'');el.dataset.idx=i;const dw=Math.max(c.rx*2*sx,8),dh=Math.max(c.ry*2*sy,8);el.style.left=(c.x*sx)+'px';el.style.top=(c.y*sy)+'px';el.style.width=dw+'px';el.style.height=dh+'px';el.addEventListener('click',ev=>{ev.stopPropagation();if(addedThisGesture){addedThisGesture=false;return;}if(suppressNextClick){suppressNextClick=false;return;}const hit=nearestMarkerAtPoint(ev.clientX,ev.clientY)||el;const hitIdx=parseInt(hit.dataset.idx,10);colonies[hitIdx].removed=true;renderMarkers();updateCount();});attachResize(el,i);stage.appendChild(el);});updateCount();}
 function updateCount(){const auto=colonies.filter(c=>c.source==='auto'&&!c.removed).length;const manual=colonies.filter(c=>c.source==='manual'&&!c.removed).length;const removed=colonies.filter(c=>c.source==='auto'&&c.removed).length;countDisplay.textContent=auto+manual;autoCountEl.textContent=auto;manualCountEl.textContent=manual;removedCountEl.textContent=removed;}
 window.addEventListener('resize',renderMarkers);
 document.getElementById('resetBtn').addEventListener('click',()=>{if(currentFile)analyze(false);});

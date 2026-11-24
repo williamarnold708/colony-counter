@@ -18,15 +18,18 @@ import numpy as np
 from detector import split_merged_blob, pieces_like_anchor
 import dish_edge
 
-MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                          "model", "best.pt")
 # Default is the v2.1 release (v2.0 fine-tuned on reviewed plates from the
-# hosted app, November 2026). To roll back without a code change, set
-# MODEL_URL to the model-v2.0 or model-v1.0 release.
+# hosted app, November 2026) as ONNX, which runs with ONNX Runtime in a small
+# fraction of PyTorch's memory (onnx_detect.py; export with tools/export_onnx.py).
+# A .pt URL still works but loads PyTorch: to roll back without a code change,
+# set MODEL_URL to the model-v2.0 or model-v1.0 release's best.pt.
 MODEL_URL = os.environ.get(
     "MODEL_URL",
-    "https://github.com/williamarnold708/colony-counter/releases/download/model-v2.1/best.pt",
+    "https://github.com/williamarnold708/colony-counter/releases/download/model-v2.1/best.onnx",
 )
+# The local copy is named after the URL's file, so .onnx and .pt never mix.
+MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "model",
+                          os.path.basename(MODEL_URL.split("?")[0]) or "best.onnx")
 
 _model = None
 _load_failed = False
@@ -68,8 +71,12 @@ def _get_model():
         _load_failed = True
         return None
     try:
-        from ultralytics import YOLO
-        _model = YOLO(MODEL_PATH)
+        if MODEL_PATH.lower().endswith(".onnx"):
+            from onnx_detect import OnnxDetector
+            _model = OnnxDetector(MODEL_PATH)
+        else:
+            from ultralytics import YOLO
+            _model = YOLO(MODEL_PATH)
         return _model
     except Exception as e:
         print(f"[model_detect] could not load model: {e}")
@@ -157,6 +164,8 @@ def raw_detections(work_bgr, conf=0.25, imgsz=None):
         imgsz = BASE_IMGSZ
     # iou=0.45 tightens YOLO's own non-max suppression so heavily overlapping
     # boxes are merged before they reach us.
+    if getattr(model, "is_onnx", False):  # ONNX Runtime path (onnx_detect.py)
+        return model.predict(work_bgr, conf=conf, imgsz=imgsz, iou=0.45, max_det=MAX_DET)
     results = model.predict(work_bgr, conf=conf, imgsz=imgsz, iou=0.45,
                             max_det=MAX_DET, verbose=False)
     dets = []

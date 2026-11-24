@@ -359,3 +359,42 @@ At the default setting it removed 1 mark on the 42 held-out plates.
 
 Marks on the dish wall therefore need more training examples (plates on a
 shiny bench with the wall in view), not a geometric rule.
+
+## Running the model with ONNX Runtime (fits a 512 MB host)
+
+The server now runs the model as ONNX with ONNX Runtime instead of PyTorch.
+That cuts memory enough for full-resolution (1024) inference on a 512 MB host,
+where the PyTorch path ran out of memory.
+
+**Memory** on a full-size 12 MP photo, three analyses in a row (Windows
+working set, so approximate):
+
+| Path | App at rest | Peak |
+| --- | --- | --- |
+| PyTorch (Ultralytics) | 274 MB | 553 MB |
+| ONNX Runtime | 100 MB | 232 MB |
+
+**Parity.** `app/onnx_detect.py` repeats Ultralytics' predict() step for
+step, the same recipe the Android app uses:
+- letterbox with stride-32 padding;
+- RGB scaled to 0..1;
+- confidence filter;
+- greedy NMS at IoU 0.45;
+- scale_boxes back to the image.
+
+On 54 plates (the 42 held-out plates plus 12 new ones), at confidence 0.325
+and 0.235, every mark matched the PyTorch path exactly: 3,065 marks, 0 px
+difference.
+
+**Details:**
+- The `.onnx` is dynamic-shape. A fixed 1024x1024 export pads to a square
+  and finds about 3% more colonies.
+- Export with `tools/export_onnx.py`. The release `model-v2.1` carries both
+  `best.onnx` and `best.pt`.
+- The engine follows the model file: an `.onnx` `MODEL_URL` uses ONNX Runtime,
+  a `.pt` one loads PyTorch. A rollback with `MODEL_URL` set to an older
+  `.pt` release therefore brings back PyTorch's memory use.
+- One inference thread by default; change it with `ORT_THREADS`.
+
+With ONNX, the `INFERENCE_IMGSZ=640` / `DENSE_IMGSZ=640` low-memory advice
+above is no longer needed.

@@ -1,5 +1,9 @@
 flask
 opencv-python-headless
 numpy
+# Runs the model (.onnx) in the server: a small fraction of PyTorch's memory.
+onnxruntime>=1.17
+# Only for .pt models, training tools and tools/export_onnx.py; the server
+# never imports it when the model is .onnx.
 ultralytics
 gunicorn

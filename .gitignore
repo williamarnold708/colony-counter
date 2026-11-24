@@ -6,6 +6,7 @@ venv/
 
 # Trained model (large; distribute via releases, not git)
 app/model/*.pt
+app/model/*.onnx
 
 # Runtime uploads
 static/uploads/*

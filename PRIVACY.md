@@ -1,6 +1,6 @@
 # Privacy Policy — Colony Counter (Android)
 
-Last updated: 2026-09-23
+Last updated: 2026-11-25
 
 Colony Counter is an Android app that counts microbial colonies in a photo of an
 agar plate. **All detection runs on your device.** The app does not have a
@@ -10,13 +10,11 @@ or sell any data, to us or to anyone else.
 ## What the app does with a photo
 
 When you take or choose a plate photo, it is analysed by a detection model
-bundled inside the app, on your device. The photo is never uploaded anywhere.
-
-If you use the **save for training** feature to record a corrected count, the
-photo and the marks you made are written to the app's own storage on your
-device (`Android/data/com.agarcount.app/files/`). That stays on your
-device — the app has no way to send it elsewhere — unless you copy it off
-yourself, for example over a USB cable.
+bundled inside the app, on your device. The photo is never uploaded anywhere,
+and the app does not keep your photos or results: when you take a photo with the
+camera, the camera app saves it to a temporary folder private to this app, and
+the app deletes such temporary photos after about a day. The app has no account,
+no history and no way to send anything off your device.
 
 ## Permissions
 
